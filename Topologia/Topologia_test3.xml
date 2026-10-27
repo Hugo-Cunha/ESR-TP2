@@ -168,7 +168,7 @@
         <service name="zebra"/>
       </services>
     </device>
-    <device id="26" name="S2-BT" icon="" canvas="1" type="PC" class="" image="" compose="" compose_name="">
+    <device id="26" name="Bootstrapper" icon="" canvas="1" type="PC" class="" image="" compose="" compose_name="">
       <position x="1054.422119140625" y="295.3805236816406" lat="47.57648143508138" lon="-122.11811616616693" alt="2.0"/>
       <services>
         <service name="DefaultRoute"/>
@@ -333,7 +333,7 @@
     </link>
     <link node1="11" node2="26">
       <iface1 id="3" name="veth11.3.1"/>
-      <iface2 id="0" name="eth0" ip4="10.0.18.10" ip4_mask="24" ip6="2001:0:0:12::16" ip6_mask="64"/>
+      <iface2 id="0" name="eth0" mac="00:00:00:aa:00:2f" ip4="10.0.18.10" ip4_mask="24" ip6="2001:0:0:12::16" ip6_mask="64"/>
       <options delay="0" bandwidth="0" loss="0.0" dup="0" jitter="0" unidirectional="0" buffer="0"/>
     </link>
   </links>
