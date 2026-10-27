@@ -48,8 +48,10 @@ class Estatisticas:
         return True
 
     def resumo(self):
+        agora = time.time()
+        fps = len([t for t in self.chegadas if agora - t < 2]) / 2   # frames nos últimos 2 s
         total = self.recebidos + self.perdidos
         perdas_pct = 100 * self.perdidos / total if total else 0
         return (f"frames={self.recebidos} perdas={self.perdidos} ({perdas_pct:.1f}%) "
-                f"fps={len(self.chegadas) / 2:.1f} atraso={self.atraso:.1f}ms jitter={self.jitter:.2f}ms "
+                f"fps={fps:.1f} atraso={self.atraso:.1f}ms jitter={self.jitter:.2f}ms "
                 f"saltos={self.saltos} trocas={self.trocas_servidor} maior_falha={self.maior_falha * 1000:.0f}ms")

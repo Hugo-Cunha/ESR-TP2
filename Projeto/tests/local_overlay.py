@@ -2,6 +2,9 @@
 
 Cada nó recebe um IP próprio em 127.10.0.x (todo o 127.0.0.0/8 é loopback em
 Linux), por isso todos podem usar as mesmas portas, como no CORE.
+  - onodes/servidores: 127.10.0.1, .2, ... (pela ordem do JSON)
+  - clientes:          127.10.0.101, .102, ...
+  - bootstrapper:      127.10.0.250
 """
 
 import json
@@ -13,24 +16,26 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TODOS = []          # overlays criados (para parar tudo mesmo se um teste rebentar)
 
 
 class LocalOverlay:
     def __init__(self, cfg_path, workdir, base="127.10.0."):
         with open(cfg_path) as f:
             cfg = json.load(f)
-        self.names = list(cfg["nodes"])
         self.base = base
-        self.ip = {n: f"{base}{i + 1}" for i, n in enumerate(self.names)}
-        for n in self.names:
+        self.ip = {n: f"{base}{i + 1}" for i, n in enumerate(cfg["nodes"])}
+        for n in cfg["nodes"]:
             cfg["nodes"][n]["ip"] = self.ip[n]
         os.makedirs(workdir, exist_ok=True)
         self.workdir = workdir
         self.cfg = os.path.join(workdir, "overlay_local.json")
         with open(self.cfg, "w") as f:
             json.dump(cfg, f, indent=1)
-        self.boot_ip = None
+        self.boot_ip = base + "250"
         self.procs = {}
+        self.n_clientes = 0
+        TODOS.append(self)
 
     def _spawn(self, key, args):
         logf = open(os.path.join(self.workdir, f"{key}.log"), "a")
@@ -38,22 +43,32 @@ class LocalOverlay:
                              stdout=logf, stderr=subprocess.STDOUT, text=True,
                              env=dict(os.environ, PYTHONUNBUFFERED="1"))
         self.procs[key] = p
-        return p
 
     def start_bootstrapper(self):
-        """O bootstrapper corre numa "máquina" própria (como o PC Bootstrapper no CORE)."""
-        self.boot_ip = self.base + "250"
         self._spawn("BOOT", ["bootstrapper.py", self.cfg, self.boot_ip])
         time.sleep(0.5)
 
     def start(self, name, programa="onode.py", *extra):
-        """programa: onode.py, servidor.py ou cliente.py"""
+        """programa: onode.py ou servidor.py"""
         self._spawn(name, [programa, self.boot_ip, "--ip", self.ip[name]] + list(extra))
 
+    def start_cliente(self, name, onode, stream):
+        if name not in self.ip:
+            self.n_clientes += 1
+            self.ip[name] = f"{self.base}{100 + self.n_clientes}"
+        self._spawn(name, ["cliente.py", self.ip[onode], stream, "--ip", self.ip[name], "--sem-gui"])
+
     def cmd(self, name, line):
+        """Escreve uma linha no terminal (stdin) do processo."""
         p = self.procs[name]
         p.stdin.write(line + "\n")
         p.stdin.flush()
+
+    def ottctl(self, name, comando):
+        """Pede um comando a um onode pela porta de comandos e devolve a resposta."""
+        r = subprocess.run([sys.executable, "ottctl.py", "--ip", self.ip[name]] + comando.split(),
+                           cwd=ROOT, capture_output=True, text=True, timeout=10)
+        return r.stdout
 
     def kill(self, name, graceful=False):
         p = self.procs.pop(name)
@@ -65,12 +80,12 @@ class LocalOverlay:
                 return
             except Exception:
                 pass
-        p.send_signal(signal.SIGKILL)        # simula falha abrupta (sem BYE)
+        p.send_signal(signal.SIGKILL)        # simula falha abrupta (sem ADEUS)
         p.wait()
 
     def freeze(self, name):
         """Congela o processo (SIGSTOP): não fecha sockets, só deixa de responder.
-        Simula uma falha de ligação/máquina detetada apenas pelos heartbeats."""
+        Simula uma falha de ligação/máquina detetada apenas pelo timeout."""
         self.procs[name].send_signal(signal.SIGSTOP)
 
     def log(self, name):
@@ -80,11 +95,7 @@ class LocalOverlay:
     def last_stats(self, name):
         """Última linha STATS do cliente, como dict."""
         lines = [l for l in self.log(name).splitlines() if "STATS" in l]
-        if not lines:
-            return None
-        d = dict(re.findall(r"(\w+)=(\S+)", lines[-1]))
-        d["caminho"] = lines[-1].split("caminho=")[-1].strip()
-        return d
+        return dict(re.findall(r"(\w+)=(\S+)", lines[-1])) if lines else None
 
     def stop_all(self):
         for name in list(self.procs):

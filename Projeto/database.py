@@ -57,12 +57,12 @@ class Fluxo:
         self.servidor = servidor
         self.stream = stream
         self.destinos = {}              # ip do vizinho -> instante do último ATIVAR
-        self.local = False              # True se o cliente deste nó o está a ver
+        self.clientes = set()           # IPs dos clientes ligados a este nó que veem este fluxo
         self.pedido_a = None            # vizinho a quem pedimos o fluxo (a Origem)
         self.ultimo_ativar = 0.0
 
     def preciso(self):
-        return self.local or len(self.destinos) > 0
+        return len(self.clientes) > 0 or len(self.destinos) > 0
 
 
 class Database:
@@ -78,9 +78,7 @@ class Database:
         self.rotas = {}                 # ip do servidor -> Rota
         self.fluxos = {}                # (servidor, stream) -> Fluxo
         self.streams_locais = {}        # (servidor) nome da stream -> ficheiro
-        self.stream_pedida = None       # (cliente) stream que o utilizador quer ver
-        self.fluxo_local = None         # (cliente) chave do fluxo que está a ver
-        self.entregar_local = None      # (cliente) função que recebe os pacotes
+        self.clientes = {}              # IP do cliente -> {"stream", "servidor", "instante"}
         self.sock_dados = None          # socket UDP de dados
         self.atrasos = {}               # (testes) ip -> atraso emulado em segundos
 
@@ -122,7 +120,7 @@ class Database:
             for stream in sorted(self.streams_locais):
                 f = self.fluxos.get((self.meu_ip, stream))
                 linhas.append(f"{self.meu_nome + '/' + stream:14} {'(local)':7} {0:>7} {0:>6} "
-                              f"{self._destinos(f):16} {'ativa' if f and f.destinos else 'inativa':8}")
+                              f"{self._destinos(f):16} {'ativa' if f and f.preciso() else 'inativa':8}")
             for rota in sorted(self.rotas.values(), key=lambda r: r.nome_servidor):
                 alternativas = " ".join(f"{self.nome_de(ip)}({c.custo})" for ip, c in rota.candidatos.items()
                                         if ip != rota.origem)
@@ -141,6 +139,5 @@ class Database:
         if f is None:
             return "-"
         nomes = [self.nome_de(ip) for ip in f.destinos]
-        if f.local:
-            nomes.append("local")
+        nomes += [f"cliente:{ip}" for ip in sorted(f.clientes)]
         return ",".join(nomes) or "-"

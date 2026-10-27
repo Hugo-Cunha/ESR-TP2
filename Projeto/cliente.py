@@ -1,70 +1,153 @@
 #!/usr/bin/env python3
-# Cliente de streaming = nó do overlay + janela para ver o vídeo.
-# O cliente também é um nó overlay: tem vizinhos e rotas, por isso, se o vizinho
-# por onde recebe o vídeo cair, passa a receber por outro.
+# Cliente de streaming. NÃO é um nó do overlay: só conhece o IP do seu onode.
 #
-# Uso:  python3 cliente.py <ip_bootstrapper> <stream> [--sem-gui]
-# ex.:  python3 cliente.py 10.0.18.10 filmeA
+#   - de 1 em 1 s envia PEDIR {stream} ao onode (UDP 6003);
+#   - recebe os pacotes de vídeo na porta UDP 6001 e mostra-os;
+#   - se o onode morrer, deixa de receber vídeo mas continua a pedir; quando o
+#     onode voltar, o vídeo volta sozinho.
 #
-# Comandos extra: play <stream> | stop
+# Uso:  python3 cliente.py <ip_do_onode> <stream> [--sem-gui]
+# ex.:  python3 cliente.py 10.0.17.20 filmeA        (PC5, ligado ao PC4)
+#
+# Comandos no terminal: play <stream> | stop | sair
 
+import argparse
+import socket
+import sys
 import threading
 import time
 
-import onode
+from comum import config, log as log_mod, pacote_dados
 from comum.estatisticas import Estatisticas
 from comum.log import log
+from comum.mensagem import Mensagem
 from comum.RtpPacket import RtpPacket
-from servicos import fluxos
 
 
-def mostrar_estatisticas(db, stats):
-    """De 2 em 2 s escreve no terminal como está a correr a receção."""
-    while db.a_correr:
-        time.sleep(2)
-        if db.stream_pedida:
-            with db.lock:
-                rota = db.rotas.get(db.fluxo_local[0]) if db.fluxo_local else None
-                servidor = rota.nome_servidor if rota else None
-                caminho = " > ".join([n for _, n in rota.caminho] + [db.meu_nome]) if rota and rota.origem else "-"
-            log(f"STATS stream={db.stream_pedida} servidor={servidor} {stats.resumo()} caminho={caminho}")
+class Cliente:
+    def __init__(self, onode, stream, ip="0.0.0.0"):
+        self.onode = onode
+        self.stream = stream                  # None = parado
+        self.estado = None                    # última resposta do onode
+        self.stats = Estatisticas()
+        self.servidor = None
+        self.ultima_frame = None              # lida pela janela
+        self.a_correr = True
+        self.sock_dados = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock_dados.bind((ip, config.DATA_PORT))
+        self.sock_pedidos = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock_pedidos.bind((ip, 0))
+        self.sock_pedidos.settimeout(config.PEDIR_INTERVALO)
+
+    ##############################################################################
+    #* Pedidos ao onode (de 1 em 1 s)
+
+    def svc_pedir(self):
+        while self.a_correr:
+            if self.stream is None:
+                time.sleep(config.PEDIR_INTERVALO)
+                continue
+            msg = Mensagem(Mensagem.PEDIR, dados={"stream": self.stream})
+            self.sock_pedidos.sendto(msg.serialize(), (self.onode, config.CLIENTE_PORT))
+            try:
+                resposta = Mensagem.deserialize(self.sock_pedidos.recv(4096).decode())
+                estado = resposta.dados["estado"]
+                time.sleep(config.PEDIR_INTERVALO)
+            except (socket.timeout, ValueError):
+                estado = "o onode não responde"
+            except OSError:                    # (ex.: ICMP port unreachable: onode em baixo)
+                estado = "o onode não responde"
+                time.sleep(config.PEDIR_INTERVALO)
+            if estado != self.estado:
+                log(f"Onode {self.onode}: {estado}")
+                self.estado = estado
+
+    def parar(self):
+        self.stream = None
+        msg = Mensagem(Mensagem.PARAR)
+        self.sock_pedidos.sendto(msg.serialize(), (self.onode, config.CLIENTE_PORT))
+        log("Parado")
+
+    def ver(self, stream):
+        if self.stream != stream:
+            self.stats = Estatisticas()
+        self.stream = stream
+        log(f"A pedir '{stream}' ao onode {self.onode}")
+
+    ##############################################################################
+    #* Receção do vídeo
+
+    def svc_receber(self):
+        while self.a_correr:
+            pacote, _ = self.sock_dados.recvfrom(65535)
+            lido = pacote_dados.ler(pacote)
+            if lido is None or self.stream is None:
+                continue
+            servidor, stream, saltos, t_envio, rtp_bytes = lido
+            if stream != self.stream:
+                continue
+            rtp = RtpPacket()
+            rtp.decode(rtp_bytes)
+            self.servidor = servidor
+            if self.stats.registar(rtp, saltos, t_envio):
+                self.ultima_frame = rtp.getPayload()
+
+    def svc_estatisticas(self):
+        """De 2 em 2 s escreve no terminal como está a correr a receção."""
+        while self.a_correr:
+            time.sleep(2)
+            if self.stream:
+                log(f"STATS stream={self.stream} servidor={self.servidor} {self.stats.resumo()}")
+
+
+def consola(cliente):
+    for linha in sys.stdin:
+        partes = linha.split()
+        if partes[:1] == ["play"] and len(partes) == 2:
+            cliente.ver(partes[1])
+        elif partes[:1] == ["stop"]:
+            cliente.parar()
+        elif partes[:1] == ["sair"]:
+            break
+        elif partes:
+            print("Comandos: play <stream> | stop | sair", flush=True)
+    else:
+        while cliente.a_correr:              # sem terminal: fica a correr
+            time.sleep(1)
 
 
 if __name__ == "__main__":
-    ap = onode.argumentos("Cliente de streaming")
+    ap = argparse.ArgumentParser(description="Cliente de streaming")
+    ap.add_argument("onode", help="IP do onode a que este cliente se liga")
     ap.add_argument("stream", help="stream a ver (ex.: filmeA)")
+    ap.add_argument("--ip", default="0.0.0.0", help="(testes) IP local a usar")
     ap.add_argument("--sem-gui", action="store_true", help="não abre janela (só estatísticas)")
     args = ap.parse_args()
 
-    db = onode.iniciar(args.bootstrapper, args.ip, onode.atrasos(args))
-    stats = Estatisticas()
-    gui = None
+    log_mod.nome = socket.gethostname() if args.ip == "0.0.0.0" else f"cliente {args.ip}"
+    cliente = Cliente(args.onode, args.stream, args.ip)
+    cliente.ver(args.stream)
+    for svc in (cliente.svc_pedir, cliente.svc_receber, cliente.svc_estatisticas):
+        threading.Thread(target=svc, daemon=True).start()
 
-    def receber(rtp_bytes, saltos, t_envio):
-        """Chamada pelo serviço de dados para cada pacote do fluxo que estamos a ver."""
-        rtp = RtpPacket()
-        rtp.decode(rtp_bytes)
-        if stats.registar(rtp, saltos, t_envio) and gui:
-            gui.ultima_frame = rtp.getPayload()
+    try:
+        if args.sem_gui:
+            consola(cliente)
+        else:
+            from tkinter import Tk
+            from comum.ClienteGUI import ClienteGUI
+            threading.Thread(target=consola, args=(cliente,), daemon=True).start()
+            root = Tk()
+            root.title(f"{log_mod.nome} - {args.stream} (onode {args.onode})")
+            gui = ClienteGUI(root, lambda: cliente.ver(args.stream), cliente.parar)
 
-    db.entregar_local = receber
-    threading.Thread(target=mostrar_estatisticas, args=(db, stats), daemon=True).start()
-    fluxos.pedir_stream(db, args.stream)
-
-    comandos = onode.comandos_base(db)
-    comandos["play"] = lambda a: fluxos.pedir_stream(db, a[0]) or f"a ver {a[0]}"
-    comandos["stop"] = lambda a: fluxos.parar_stream(db) or "parado"
-
-    if args.sem_gui:
-        onode.correr(db, comandos)
-    else:
-        from tkinter import Tk
-        from comum.ClienteGUI import ClienteGUI
-        threading.Thread(target=onode.correr, args=(db, comandos), daemon=True).start()
-        root = Tk()
-        root.title(f"{db.meu_nome} - {args.stream}")
-        gui = ClienteGUI(root, lambda: fluxos.pedir_stream(db, args.stream),
-                         lambda: fluxos.parar_stream(db))
-        root.mainloop()
-        from servicos import vizinhos
-        vizinhos.sair(db)
+            def copiar_frame():                 # passa a frame mais recente para a janela
+                gui.ultima_frame = cliente.ultima_frame
+                root.after(40, copiar_frame)
+            copiar_frame()
+            root.mainloop()
+    except KeyboardInterrupt:
+        pass
+    if cliente.stream:
+        cliente.parar()
+    cliente.a_correr = False

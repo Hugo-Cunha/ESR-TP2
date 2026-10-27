@@ -1,12 +1,12 @@
 # Serviços de FLUXOS: ativação e poda dos ramos da árvore.
 #
-# Um fluxo é o par (servidor, stream). Quando um cliente quer ver uma stream:
-#   - o seu nó envia ATIVAR à Origem para esse servidor;
+# Um fluxo é o par (servidor, stream). Quando um cliente pede uma stream ao seu onode:
+#   - o onode escolhe o melhor servidor que a tem e envia ATIVAR à Origem para ele;
 #   - esse nó regista quem pediu como Destino e, se ainda não recebia o fluxo,
 #     envia ATIVAR à sua própria Origem... até chegar ao servidor.
 # Assim liga-se um ramo à árvore. Onde dois ramos se juntam passa só uma cópia.
 #
-# Quando um nó fica sem Destinos (e sem cliente local), envia DESATIVAR à Origem
+# Quando um nó fica sem Destinos (e sem clientes), envia DESATIVAR à Origem
 # (poda). Os ATIVAR são repetidos de 2 em 2 s; um Destino que deixe de os enviar
 # é removido ao fim de 6,5 s (assim nada fica pendurado se um nó morrer).
 
@@ -46,7 +46,7 @@ def atualizar(db):
     """Chamada sempre que algo muda (rota, destino, vizinho). Para cada fluxo:
        - se é preciso e ainda não o pedimos à Origem atual -> ATIVAR (e DESATIVAR à antiga);
        - se já não é preciso -> DESATIVAR (poda) e esquecê-lo."""
-    escolher_servidor(db)
+    escolher_servidores(db)
     for chave in list(db.fluxos):
         fluxo = db.fluxos[chave]
         if fluxo.servidor == db.meu_ip:       # sou o servidor deste fluxo: não peço a ninguém
@@ -105,36 +105,29 @@ def svc_manter_fluxos(db):
 
 
 ##################################################################################
-#* Cliente: pedir uma stream e escolher o servidor (extra: o mais próximo)
+#* Clientes ligados a este onode: para cada um, escolher o servidor da stream
 
-def pedir_stream(db, stream):
-    with db.lock:
-        db.stream_pedida = stream
-        log(f"Cliente quer ver '{stream}'")
-        atualizar(db)
+def escolher_servidores(db):
+    """Atribui cada cliente ao fluxo (melhor servidor, stream). Se o servidor que
+    usava deixar de estar alcançável (ou aparecer um melhor), muda sozinho."""
+    for fluxo in db.fluxos.values():
+        fluxo.clientes = set()
+    for ip, cliente in db.clientes.items():
+        servidor = melhor_servidor(db, cliente["stream"])
+        if servidor != cliente.get("servidor"):
+            nome = db.nome_de(servidor) if servidor else "nenhum"
+            if servidor in db.rotas:
+                nome = db.rotas[servidor].nome_servidor
+            log(f"Cliente {ip}: '{cliente['stream']}' a partir do servidor {nome}")
+            cliente["servidor"] = servidor
+        if servidor:
+            db.obter_fluxo(servidor, cliente["stream"]).clientes.add(ip)
 
 
-def parar_stream(db):
-    with db.lock:
-        db.stream_pedida = None
-        log("Cliente parou")
-        atualizar(db)
-
-
-def escolher_servidor(db):
-    """Entre os servidores que têm a stream pedida, escolhe o de menor custo.
-    Se esse servidor deixar de estar alcançável, passa automaticamente a outro."""
-    melhor = None
-    if db.stream_pedida:
-        opcoes = [(rota.custo, rota.saltos, rota.servidor) for rota in db.rotas.values()
-                  if rota.origem and db.stream_pedida in rota.streams]
-        if opcoes:
-            melhor = (min(opcoes)[2], db.stream_pedida)
-    if melhor == db.fluxo_local:
-        return
-    if db.fluxo_local in db.fluxos:
-        db.fluxos[db.fluxo_local].local = False
-    if melhor:
-        db.obter_fluxo(*melhor).local = True
-        log(f"Cliente: '{melhor[1]}' a partir do servidor {db.rotas[melhor[0]].nome_servidor}")
-    db.fluxo_local = melhor
+def melhor_servidor(db, stream):
+    """Servidor com a stream e menor custo (se este nó for um servidor que a tem, é ele)."""
+    if stream in db.streams_locais:
+        return db.meu_ip
+    opcoes = [(rota.custo, rota.saltos, rota.servidor) for rota in db.rotas.values()
+              if rota.origem and stream in rota.streams]
+    return min(opcoes)[2] if opcoes else None

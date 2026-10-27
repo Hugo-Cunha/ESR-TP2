@@ -9,8 +9,8 @@
 #   ./core_run.sh log C1           # segue o log de um nó (Ctrl+C para sair)
 #   ./core_run.sh kill O2          # mata o programa num nó (teste de falha)
 #   ./core_run.sh run O2 [args]    # (re)arranca o programa num nó
-#   ./core_run.sh cmd O3 rotas     # envia um comando ao nó: rotas, vizinhos, sair,
-#                                  #   ping (servidores), play <stream> / stop (clientes)
+#   ./core_run.sh cmd O3 rotas     # envia um comando a um onode: rotas, vizinhos, sair,
+#                                  #   ping (servidores)
 #   ./core_run.sh shell PC4        # shell interativa dentro de um nó CORE
 #   ./core_run.sh stop             # para tudo
 
@@ -35,9 +35,11 @@ declare -A PROG=( [S1]=servidor.py [S2]=servidor.py
                   [O1]=onode.py [O2]=onode.py [O3]=onode.py [O4]=onode.py
                   [C1]=cliente.py [C2]=cliente.py [C3]=cliente.py [C4]=cliente.py )
 declare -A ARGS=(
-  [S1]="filmeA filmeB" [S2]="filmeB filmeC"
-  [C1]="filmeA --sem-gui" [C2]="filmeB --sem-gui"
-  [C3]="filmeC --sem-gui" [C4]="filmeB --sem-gui" )
+  [S1]="$BOOT filmeA filmeB" [S2]="$BOOT filmeB filmeC"
+  [O1]="$BOOT" [O2]="$BOOT" [O3]="$BOOT" [O4]="$BOOT"
+  # clientes: <IP do seu onode> <stream>  (não falam com o bootstrapper)
+  [C1]="10.0.17.20 filmeA --sem-gui" [C2]="10.0.19.21 filmeB --sem-gui"
+  [C3]="10.0.20.20 filmeC --sem-gui" [C4]="10.0.0.20 filmeB --sem-gui" )
 PROGRAMAS="onode.py|servidor.py|cliente.py"
 
 die() { echo "Erro: $*" >&2; exit 1; }
@@ -61,7 +63,7 @@ bg() {   # bg <nome do log> <nó CORE> <comando> : corre no nó, em fundo, com l
 
 arrancar() {   # arrancar <nome overlay> [args extra]
   local n=$1; shift
-  bg "$n" "${HOST[$n]}" python3 -u ${PROG[$n]} $BOOT ${ARGS[$n]} "$@"
+  bg "$n" "${HOST[$n]}" python3 -u ${PROG[$n]} ${ARGS[$n]} "$@"
   echo "  $n (${HOST[$n]}) arrancado"
 }
 
@@ -92,7 +94,7 @@ case "$1" in
   shell) node "$2" bash ;;
   cmd)   # cmd <nome overlay> <comando...> : envia um comando ao nó a correr em fundo
     n=$2; shift 2
-    [ -n "${HOST[$n]}" ] || die "nó overlay desconhecido: $n (usa S1, S2, O1..O4, C1..C4)"
+    [[ "$n" =~ ^(S1|S2|O1|O2|O3|O4)$ ]] || die "só os onodes aceitam comandos (S1, S2, O1..O4)"
     node "${HOST[$n]}" bash -c "cd '$DIR' && python3 ottctl.py $*" ;;
   stop)
     for h in "${HOST[@]}"; do node "$h" pkill -f "$PROGRAMAS" 2>/dev/null; done

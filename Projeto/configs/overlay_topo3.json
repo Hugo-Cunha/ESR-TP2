@@ -1,69 +1,11 @@
 {
-  "_comentario": "Topologia_test3. Bootstrapper num PC próprio (10.0.18.10, switch s1). S1=Server (filmeA, filmeB), S2=PC6 (filmeB, filmeC); relays O1=PC1, O2=PC4, O3=PC2, O4=PC9; clientes C1=PC5, C2=PC3, C3=PC8, C4=PC7. Cada cliente tem 2 vizinhos para haver rota alternativa.",
+  "_comentario": "Topologia_test3. Só os onodes estão aqui (os clientes não fazem parte do overlay). Bootstrapper no PC Bootstrapper (10.0.18.10). S1=Server (filmeA, filmeB), S2=PC6 (filmeB, filmeC), O1=PC1, O2=PC4, O3=PC2, O4=PC9. Clientes e o seu onode: PC5->O2 (10.0.17.20), PC3->O3 (10.0.19.21), PC8->O4 (10.0.20.20), PC7->S2 (10.0.0.20).",
   "nodes": {
-    "S1": {
-      "ip": "10.0.18.20",
-      "neighbours": [
-        "O1",
-        "O2",
-        "O3"
-      ]
-    },
-    "S2": {
-      "ip": "10.0.0.20",
-      "neighbours": [
-        "O2",
-        "O4",
-        "C4"
-      ]
-    },
-    "O1": {
-      "ip": "10.0.18.21",
-      "neighbours": [
-        "O2",
-        "O3",
-        "C1"
-      ]
-    },
-    "O2": {
-      "ip": "10.0.17.20",
-      "neighbours": [
-        "O3",
-        "O4",
-        "C1",
-        "C2"
-      ]
-    },
-    "O3": {
-      "ip": "10.0.19.21",
-      "neighbours": [
-        "O4",
-        "C2",
-        "C3"
-      ]
-    },
-    "O4": {
-      "ip": "10.0.20.20",
-      "neighbours": [
-        "C3",
-        "C4"
-      ]
-    },
-    "C1": {
-      "ip": "10.0.17.21",
-      "neighbours": []
-    },
-    "C2": {
-      "ip": "10.0.19.20",
-      "neighbours": []
-    },
-    "C3": {
-      "ip": "10.0.20.21",
-      "neighbours": []
-    },
-    "C4": {
-      "ip": "10.0.0.21",
-      "neighbours": []
-    }
+    "S1": {"ip": "10.0.18.20", "neighbours": ["O1", "O2", "O3"]},
+    "S2": {"ip": "10.0.0.20",  "neighbours": ["O2", "O4"]},
+    "O1": {"ip": "10.0.18.21", "neighbours": ["O2", "O3"]},
+    "O2": {"ip": "10.0.17.20", "neighbours": ["O3", "O4"]},
+    "O3": {"ip": "10.0.19.21", "neighbours": ["O4"]},
+    "O4": {"ip": "10.0.20.20", "neighbours": []}
   }
 }

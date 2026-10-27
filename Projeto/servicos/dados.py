@@ -42,7 +42,7 @@ def svc_emitir_stream(db, stream, ficheiro):
         frame = video.nextFrame()
         with db.lock:
             fluxo = db.fluxos.get((db.meu_ip, stream))
-            destinos = list(fluxo.destinos) if fluxo else []
+            destinos = list(fluxo.destinos) + list(fluxo.clientes) if fluxo else []
         if destinos:
             seq = (seq + 1) % 65536
             rtp = RtpPacket()
@@ -63,21 +63,19 @@ def svc_receber_dados(db):
         lido = pacote_dados.ler(pacote)
         if lido is None:
             continue
-        servidor, stream, saltos, t_envio, rtp = lido
+        servidor, stream, saltos, t_envio, _ = lido
         with db.lock:
             rota = db.rotas.get(servidor)
             fluxo = db.fluxos.get((servidor, stream))
             # só aceitamos o pacote se vier da nossa Origem para esse servidor
             if rota is None or fluxo is None or rota.origem != ip_origem:
                 continue
-            destinos = list(fluxo.destinos)
-            local = fluxo.local
-        # uma cópia para cada destino (é aqui que se "replica" na árvore)
+            destinos = list(fluxo.destinos) + list(fluxo.clientes)
+        # uma cópia para cada destino e para cada cliente ligado a este nó
+        # (é aqui que se "replica" na árvore)
         reenviar = pacote_dados.mais_um_salto(pacote)
         for ip in destinos:
             enviar_dados(db, reenviar, ip)
-        if local and db.entregar_local:
-            db.entregar_local(rtp, saltos + 1, t_envio)
 
 
 ##################################################################################
@@ -88,11 +86,13 @@ def enviar_ping(db):
     with db.lock:
         enviados = 0
         for fluxo in db.fluxos.values():
-            if fluxo.servidor == db.meu_ip and fluxo.destinos:
+            if fluxo.servidor == db.meu_ip and fluxo.preciso():
                 msg = Mensagem(Mensagem.PING, dados={"servidor": db.meu_ip, "stream": fluxo.stream,
                                                      "t0": time.time(), "caminho": [db.meu_nome]})
                 for ip in fluxo.destinos:
                     vizinhos.enviar(db, ip, msg)
+                if fluxo.clientes:
+                    log(f"PING: {db.meu_nome}/{fluxo.stream} tem clientes ligados diretamente: {sorted(fluxo.clientes)}")
                 enviados += 1
         return f"PING enviado em {enviados} fluxo(s) ativo(s)" if enviados else \
             "Nenhum fluxo ativo (é preciso haver um cliente a ver uma stream deste servidor)"
@@ -107,6 +107,7 @@ def handle_ping(db, ip, msg):
         return
     for destino in fluxo.destinos:
         vizinhos.enviar(db, destino, Mensagem(Mensagem.PING, dados=dict(d, caminho=caminho)))
-    if fluxo.local:
+    if fluxo.clientes:
         ms = (time.time() - d["t0"]) * 1000
-        log(f"PING chegou ao cliente: {' > '.join(caminho)} ({len(caminho) - 1} saltos, {ms:.1f} ms)")
+        log(f"PING chegou ao onode dos clientes {sorted(fluxo.clientes)}: {' > '.join(caminho)} "
+            f"({len(caminho) - 1} saltos, {ms:.1f} ms)")

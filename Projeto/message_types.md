@@ -110,6 +110,19 @@ Teste do caminho (Etapa 3). Gerada pelo servidor (comando `ping`) e reenviada pe
 
 ---
 
+## PEDIR / PEDIR_RESP / PARAR (cliente ↔ o seu onode, UDP porta 6003)
+O cliente **não é nó do overlay**: só conhece o IP do seu onode. De 1 em 1 s envia PEDIR; o onode responde com o estado e envia-lhe o vídeo (porta UDP 6001 do cliente). Um cliente que não peça durante 3,5 s é esquecido. Se o onode morrer, o cliente fica sem vídeo mas continua a pedir; quando o onode volta, o vídeo volta.
+
+```json
+{"tipo": "PEDIR",      "origem": "", "dados": {"stream": "filmeB"}}
+{"tipo": "PEDIR_RESP", "origem": "10.0.19.21", "dados": {"stream": "filmeB", "estado": "a enviar"}}
+{"tipo": "PARAR",      "origem": "", "dados": {}}
+```
+
+O onode escolhe, entre os servidores que têm a stream, o de menor custo (se ele próprio for um servidor com a stream, é ele).
+
+---
+
 ## Pacote de vídeo (UDP, porta 6001)
 
 ```

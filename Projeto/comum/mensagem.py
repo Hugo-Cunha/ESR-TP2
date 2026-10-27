@@ -1,4 +1,4 @@
-# Mensagens de controlo trocadas por TCP.
+# Mensagens de controlo (TCP entre onodes; UDP entre cliente e o seu onode).
 #
 # Cada mensagem é um objeto JSON numa linha de texto:
 #     {"tipo": "ALIVE", "origem": "10.0.17.20", "dados": {...}}
@@ -22,6 +22,10 @@ class Mensagem:
     ATIVAR = "ATIVAR"            # "envia-me o fluxo (servidor, stream)"
     DESATIVAR = "DESATIVAR"      # "já não preciso do fluxo" (poda)
     PING = "PING"                # teste do caminho (Etapa 3)
+    # Cliente <-> o seu onode (UDP)
+    PEDIR = "PEDIR"              # cliente -> onode, de 1 em 1 s: "quero a stream X"
+    PEDIR_RESP = "PEDIR_RESP"    # onode -> cliente: estado do pedido
+    PARAR = "PARAR"              # cliente -> onode: "já não quero"
 
     def __init__(self, tipo, origem="", dados=None):
         self.tipo = tipo

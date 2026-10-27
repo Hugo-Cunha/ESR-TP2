@@ -1,8 +1,7 @@
 {
-  "_comentario": "Topologia_test2 (3 routers). S1=Server1, S2=PC1 (segundo servidor), C1=PC2. Serve para testar a escolha do servidor e o failover entre servidores.",
+  "_comentario": "Topologia_test2 (3 routers). S1=Server1 (10.0.1.20, filmeA filmeB), S2=PC1 (10.0.0.20, filmeB filmeC). Cliente no PC2 ligado ao S1 ou ao S2; o bootstrapper pode correr no PC2.",
   "nodes": {
-    "S1": {"ip": "10.0.1.20", "neighbours": ["S2", "C1"]},
-    "S2": {"ip": "10.0.0.20", "neighbours": ["C1"]},
-    "C1": {"ip": "10.0.5.20", "neighbours": []}
+    "S1": {"ip": "10.0.1.20", "neighbours": ["S2"]},
+    "S2": {"ip": "10.0.0.20", "neighbours": []}
   }
 }

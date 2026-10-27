@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Nó do overlay (relay). O servidor.py e o cliente.py são este mesmo nó com
-# mais alguma coisa por cima.
+# Nó do overlay (onode). O servidor.py é este mesmo nó com as streams por cima.
+# Os clientes (cliente.py) NÃO são nós do overlay: ligam-se a um onode.
 #
 # Uso:  python3 onode.py <ip_bootstrapper>
 #
@@ -15,7 +15,7 @@ import threading
 from comum import config, log as log_mod
 from comum.log import log
 from database import Database
-from servicos import dados, fluxos, rotas, vizinhos
+from servicos import clientes, dados, fluxos, rotas, vizinhos
 
 
 def iniciar(bootstrapper, ip="0.0.0.0", atrasos=None):
@@ -33,6 +33,7 @@ def iniciar(bootstrapper, ip="0.0.0.0", atrasos=None):
         rotas.svc_manter_rotas,           # expira caminhos antigos
         fluxos.svc_manter_fluxos,         # refresca/expira pedidos de fluxos
         dados.svc_receber_dados,          # recebe e reencaminha o vídeo
+        clientes.svc_clientes,            # atende os clientes ligados a este nó
     ]
     for svc in servicos:
         threading.Thread(target=svc, args=(db,), daemon=True).start()

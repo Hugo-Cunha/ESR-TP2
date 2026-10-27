@@ -1,8 +1,7 @@
 {
-  "_comentario": "Topologia_test1 (LAN com 1 switch). S1=Server, O1=PC1 (relay e cliente), C1=PC2. A ligação S1-C1 é a rota alternativa.",
+  "_comentario": "Topologia_test1 (LAN com 1 switch). S1=Server (10.0.0.22), O1=PC1 (10.0.0.20). Cliente no PC2 ligado ao O1; o bootstrapper pode correr no PC2 (o cliente gasta pouco CPU).",
   "nodes": {
-    "S1": {"ip": "10.0.0.22", "neighbours": ["O1", "C1"]},
-    "O1": {"ip": "10.0.0.20", "neighbours": ["C1"]},
-    "C1": {"ip": "10.0.0.21", "neighbours": []}
+    "S1": {"ip": "10.0.0.22", "neighbours": ["O1"]},
+    "O1": {"ip": "10.0.0.20", "neighbours": []}
   }
 }
