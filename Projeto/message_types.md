@@ -46,7 +46,7 @@ Primeira mensagem numa ligação TCP nova entre dois vizinhos (porta 6000). Quem
 ## ALIVE / ALIVE_RESP
 Enviada de **1 em 1 s** a cada vizinho. O vizinho devolve o mesmo `t` num ALIVE_RESP e quem enviou calcula `RTT = agora - t`. Serve para duas coisas:
 - **deteção de falhas**: se durante 3,5 s não chegar nada de um vizinho, ele é dado como morto;
-- **métrica**: o RTT dá o atraso da ligação.
+- **métrica**: o RTT/2 é o atraso da ligação (componente A do custo; ver README, secção 4).
 
 ```json
 {"tipo": "ALIVE",      "origem": "10.0.17.20", "dados": {"t": 1761569000.123}}
@@ -63,26 +63,28 @@ Enviada a todos os vizinhos quando um nó sai de forma ordeira (comando `sair` o
 ---
 
 ## ANUNCIO
-Enviada por cada **servidor** de 1 em 1 s e reenviada por todos os nós (inundação controlada). Constrói as tabelas de rotas.
+Enviada por cada **servidor** a cada segundo e reenviada pelos onodes (inundação controlada). Constrói as tabelas de rotas. **Não transporta o caminho**: cada onode fica a saber apenas por que vizinho chega ao servidor e com que custo.
 
 ```json
 {"tipo": "ANUNCIO", "origem": "10.0.17.20", "dados": {
     "servidor": "10.0.18.20", "nome": "S1",
     "streams": ["filmeA", "filmeB"],
     "seq": 1761569000123,
-    "custo": 1, "saltos": 1,
-    "caminho": [["10.0.18.20", "S1"], ["10.0.17.20", "O2"]]
+    "custo": 1, "saltos": 1
 }}
 ```
 
 | Campo | Significado |
 |---|---|
-| `seq` | hora do servidor em ms; identifica a ronda do anúncio (cada ronda só é reenviada uma vez) |
-| `custo` | custo do caminho de quem envia até ao servidor (soma dos custos das ligações) |
-| `saltos` | nº de ligações até ao servidor |
-| `caminho` | nós por onde o anúncio passou; quem se encontrar na lista descarta-o (evita ciclos) |
+| `seq` | número de sequência gerado pelo servidor (hora em ms); identifica a ronda e garante que informação antiga nunca se sobrepõe à recente |
+| `custo` | custo de quem envia até ao servidor (soma dos custos das ligações; ver README, secção 4). **`null` = custo infinito** (*route poisoning*: quem envia perdeu a rota) |
+| `saltos` | número de ligações até ao servidor (usado em desempates e na tabela) |
 
-Ao receber: `custo do candidato = custo + custo da ligação por onde chegou`. A **Origem** é o candidato de menor custo.
+Regras de processamento:
+- custo do candidato = `custo` + custo da ligação por onde o anúncio chegou;
+- a **Origem** é o candidato **viável** de menor custo. É viável se `seq` for mais recente do que o conhecido, ou se, com o mesmo `seq`, o `custo` anunciado for estritamente inferior ao melhor custo já obtido (condição de viabilidade do Babel/EIGRP);
+- cada ronda (`seq`) é reenviada uma única vez (ou de novo, se o custo melhorar), **a todos os vizinhos exceto a Origem** (*split horizon*);
+- quem fica sem candidato viável envia de imediato um ANUNCIO com `custo: null` a todos os vizinhos.
 
 ## ATIVAR
 Enviada pelo nó que quer receber um fluxo à sua **Origem** para esse servidor. Quem recebe regista o remetente como **Destino** e, se ainda não recebia o fluxo, envia ATIVAR à sua própria Origem (e assim até ao servidor). É repetida de 2 em 2 s; um Destino que deixe de a repetir é removido ao fim de 6,5 s.
@@ -126,8 +128,14 @@ O onode escolhe, entre os servidores que têm a stream, o de menor custo (se ele
 ## Pacote de vídeo (UDP, porta 6001)
 
 ```
-'O' 'T' | saltos (1 B) | servidor IPv4 (4 B) | t_envio (8 B) | len (1 B) | stream (len B) | pacote RTP
+'O' 'T' | saltos (1 B) | seq_ligacao (4 B) | servidor IPv4 (4 B) | t_envio (8 B) | len (1 B) | stream (len B) | pacote RTP
 ```
 
-- O cabeçalho do overlay diz a que **fluxo** (servidor, stream) o pacote pertence. Um nó só o aceita se vier da sua Origem para esse servidor e envia uma cópia a cada Destino.
-- O **pacote RTP** (12 B de cabeçalho + 1 frame JPEG) está explicado em `comum/RtpPacket.py`.
+| Campo | Significado |
+|---|---|
+| `saltos` | número de onodes atravessados (cada um soma 1) |
+| `seq_ligacao` | número de sequência **por ligação**: quem envia numera os pacotes que envia a cada vizinho; quem recebe conta as lacunas e obtém as perdas dessa ligação (medição passiva usada na métrica) |
+| `servidor`, `stream` | identificam o **fluxo**; um onode só aceita o pacote se vier da sua Origem para esse servidor e envia uma cópia a cada Destino e a cada cliente |
+| `t_envio` | instante de emissão no servidor; o cliente calcula o atraso fim-a-fim |
+
+O **pacote RTP** (12 B de cabeçalho + 1 *frame* JPEG) está descrito campo a campo em `comum/RtpPacket.py`.

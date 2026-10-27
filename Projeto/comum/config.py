@@ -19,4 +19,13 @@ DESTINO_TIMEOUT = 6.5   # destino que não refresca o pedido durante este tempo 
 PEDIR_INTERVALO = 1.0   # o cliente repete o PEDIR de 1 em 1 s
 CLIENTE_TIMEOUT = 3.5   # cliente sem PEDIR durante este tempo -> o onode esquece-o
 
+# Métrica: custo da ligação = PESO_SALTO + PESO_ATRASO×A + PESO_PERDAS×P + PESO_CARGA×C
+PESO_SALTO = 1
+PESO_ATRASO = 2
+PESO_PERDAS = 3
+PESO_CARGA = 1
+DEGRAU_ATRASO_MS = 5    # A = atraso num sentido / 5 ms (arredondado)
+DEGRAU_PERDAS_PCT = 5   # P = perdas (%) / 5 (arredondado)
+JANELA_PERDAS = 5.0     # janela de medição das perdas (s)
+
 FPS = 20                # frames por segundo emitidas pelo servidor (1 a cada 50 ms)

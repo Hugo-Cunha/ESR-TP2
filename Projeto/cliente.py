@@ -83,7 +83,7 @@ class Cliente:
             lido = pacote_dados.ler(pacote)
             if lido is None or self.stream is None:
                 continue
-            servidor, stream, saltos, t_envio, rtp_bytes = lido
+            servidor, stream, saltos, _, t_envio, rtp_bytes = lido
             if stream != self.stream:
                 continue
             rtp = RtpPacket()

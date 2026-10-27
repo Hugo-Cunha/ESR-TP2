@@ -224,20 +224,67 @@ def handle_alive_resp(db, ip, msg):
     v.rtts = (v.rtts + [rtt_ms])[-3:]         # guarda as 3 últimas medições
 
 
-def custo_ligacao(db, ip):
-    """MÉTRICA de uma ligação = 1 (o salto) + 1 por cada 5 ms de atraso.
+##################################################################################
+#* MÉTRICA de uma ligação (custo de receber dados deste vizinho)
+#
+#   custo = PESO_SALTO×1 + PESO_ATRASO×A + PESO_PERDAS×P + PESO_CARGA×C
+#
+#   A = atraso num sentido (RTT/2, média dos 3 últimos ALIVE) em degraus de 5 ms
+#   P = perdas na ligação vizinho -> nós (medidas com o vídeo) em degraus de 5 %
+#   C = nº de fluxos de OUTROS servidores que já recebemos deste vizinho
+#
+# Os degraus fazem com que pequenas variações (ruído de medição) não alterem o
+# custo e, portanto, não façam as rotas oscilar. A carga só conta fluxos de
+# outros servidores: um fluxo não deve fugir da ligação por causa de si próprio.
+#
+# Exemplos (pesos 1, 2, 3, 1):
+#   ligação sem atraso, sem perdas, sem carga        -> 1         (= contar saltos)
+#   ligação com 40 ms de atraso                      -> 1 + 2×8 = 17
+#   ligação com 10 % de perdas                       -> 1 + 3×2 = 7
+#   ligação que já leva 2 fluxos de outro servidor   -> 1 + 1×2 = 3
 
-    atraso = RTT/2 (um sentido), média das 3 últimas medições. Exemplos:
-      sem atraso configurado (RTT ~1 ms)  -> custo 1  (= contagem de saltos)
-      ligação com 40 ms de atraso         -> custo 1 + 8 = 9
-    Contar o atraso aos "degraus" de 5 ms faz com que variações pequenas do RTT
-    (1-2 ms, normais quando o nó está ocupado) não façam as rotas oscilar.
-    Até haver 3 medições (a 1.ª sai inflacionada no arranque) o custo é 1."""
-    rtts = db.vizinhos[ip].rtts
-    if len(rtts) < 3:
-        return 1
-    atraso_ms = sum(rtts) / len(rtts) / 2
-    return 1 + round(atraso_ms / 5)
+def componentes_custo(db, ip, servidor):
+    v = db.vizinhos[ip]
+    atraso = 0
+    if len(v.rtts) >= 3:                      # a 1.ª medição sai inflacionada no arranque
+        atraso = round(sum(v.rtts) / len(v.rtts) / 2 / config.DEGRAU_ATRASO_MS)
+    perdas = round(v.perdas_pct / config.DEGRAU_PERDAS_PCT)
+    carga = fluxos.carga(db, ip, servidor)
+    total = (config.PESO_SALTO + config.PESO_ATRASO * atraso
+             + config.PESO_PERDAS * perdas + config.PESO_CARGA * carga)
+    return {"atraso": atraso, "perdas": perdas, "carga": carga, "total": total}
+
+
+def custo_ligacao(db, ip, servidor):
+    return componentes_custo(db, ip, servidor)["total"]
+
+
+def registar_seq_recebido(v, seq):
+    """Medição PASSIVA de perdas: cada pacote de vídeo traz um nº de sequência
+    da ligação; um salto na numeração corresponde a pacotes perdidos."""
+    if v.seq_rx is not None:
+        diferenca = (seq - v.seq_rx) % 2**32
+        if diferenca == 0 or diferenca > 1000:   # duplicado/atrasado, ou o vizinho reiniciou
+            v.seq_rx = seq
+            return
+        v.rx_perdidos += diferenca - 1
+    v.rx_recebidos += 1
+    v.seq_rx = seq
+
+
+def fechar_janela_perdas(v):
+    """De JANELA_PERDAS em JANELA_PERDAS segundos calcula a percentagem de perdas.
+    Se não passou vídeo, não há medição: o valor antigo vai sendo esquecido aos
+    poucos (×0,8 por janela), para a ligação voltar a ser experimentada."""
+    if time.time() - v.janela_inicio < config.JANELA_PERDAS:
+        return
+    total = v.rx_recebidos + v.rx_perdidos
+    if total > 0:
+        v.perdas_pct = 100.0 * v.rx_perdidos / total
+    else:
+        v.perdas_pct = v.perdas_pct * 0.8 if v.perdas_pct > 0.5 else 0.0
+    v.rx_recebidos = v.rx_perdidos = 0
+    v.janela_inicio = time.time()
 
 
 def handle_adeus(db, ip, msg):

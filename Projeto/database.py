@@ -16,20 +16,28 @@ class Vizinho:
         self.sock = None                # socket TCP; None = não estamos ligados
         self.lock_envio = threading.Lock()
         self.ligado_desde = None
-        self.rtts = []                  # últimas medições de RTT (ms)
+        self.rtts = []                  # últimas medições de RTT (ms), pelo ALIVE
+        # Perdas na ligação vizinho -> eu, medidas passivamente com o vídeo
+        # (cada pacote traz um nº de sequência da ligação; buracos = perdas)
+        self.seq_rx = None              # último nº de sequência recebido deste vizinho
+        self.rx_recebidos = 0           # contadores da janela atual
+        self.rx_perdidos = 0
+        self.janela_inicio = time.time()
+        self.perdas_pct = 0.0           # perdas (%) da última janela completa
 
     def ligado(self):
         return self.sock is not None
 
 
 class Candidato:
-    """Um caminho até um servidor, anunciado por um vizinho."""
+    """Um caminho até um servidor, anunciado por um vizinho.
+    O nó não sabe por onde passa: só sabe o custo que o vizinho anunciou."""
 
-    def __init__(self, custo, saltos, caminho, seq):
-        self.custo = custo
+    def __init__(self, custo, anunciado, saltos, seq):
+        self.custo = custo              # custo do vizinho + custo da ligação até ele
+        self.anunciado = anunciado      # custo que o próprio vizinho anunciou
         self.saltos = saltos
-        self.caminho = caminho          # [[ip, nome], ...] do servidor até ao vizinho
-        self.seq = seq
+        self.seq = seq                  # nº de sequência do anúncio (dado pelo servidor)
         self.instante = time.time()
 
 
@@ -44,9 +52,12 @@ class Rota:
         self.origem = None              # vizinho escolhido para chegar ao servidor
         self.custo = None
         self.saltos = None
-        self.caminho = []
         self.seq_reenviado = 0          # último anúncio reenviado (inundação controlada)
         self.custo_reenviado = None
+        # Condição de viabilidade (como no Babel/EIGRP): melhor custo que este nó
+        # já teve para o nº de sequência mais recente que conhece.
+        self.seq_viavel = 0
+        self.custo_viavel = None
         self.sem_caminho_desde = None
 
 
@@ -81,6 +92,8 @@ class Database:
         self.clientes = {}              # IP do cliente -> {"stream", "servidor", "instante"}
         self.sock_dados = None          # socket UDP de dados
         self.atrasos = {}               # (testes) ip -> atraso emulado em segundos
+        self.perdas_emuladas = {}       # (testes) ip -> % de pacotes de vídeo descartados
+        self.seq_tx = {}                # ip do vizinho -> último nº de sequência enviado
 
     # ---------------------------------------------------------- vizinhos
     def vizinhos_ligados(self):
@@ -107,10 +120,17 @@ class Database:
     # ---------------------------------------------------------- tabelas
     def tabela_vizinhos(self):
         with self.lock:
-            linhas = [f"{'Vizinho':8} {'IP':15} {'Estado':10} {'RTT(ms)':>8}"]
+            from servicos.vizinhos import componentes_custo
+            linhas = [f"{'Vizinho':8} {'IP':15} {'Estado':10} {'RTT(ms)':>8} {'Perdas':>7} {'Fluxos':>6} "
+                      f"Custo da ligação (1×salto + 2×atraso + 3×perdas + 1×carga)"]
             for v in sorted(self.vizinhos.values(), key=lambda v: v.nome):
                 rtt = f"{sum(v.rtts) / len(v.rtts):.2f}" if v.rtts else "-"
-                linhas.append(f"{v.nome:8} {v.ip:15} {'ligado' if v.ligado() else 'desligado':10} {rtt:>8}")
+                linha = f"{v.nome:8} {v.ip:15} {'ligado' if v.ligado() else 'desligado':10} {rtt:>8}"
+                if v.ligado():
+                    c = componentes_custo(self, v.ip, servidor=None)
+                    linha += (f" {v.perdas_pct:6.1f}% {c['carga']:>6} "
+                              f"{c['total']} = 1 + 2×{c['atraso']} + 3×{c['perdas']} + 1×{c['carga']}")
+                linhas.append(linha)
             return "\n".join(linhas)
 
     def tabela_rotas(self):

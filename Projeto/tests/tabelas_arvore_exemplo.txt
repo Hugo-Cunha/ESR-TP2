@@ -1,37 +1,37 @@
 == S1
 Fluxo          Origem  Métrica Saltos Destinos         Estado   Alternativas
-S1/filmeA      (local)       0      0 O3,O2            ativa   
+S1/filmeA      (local)       0      0 O2,O3            ativa   
 S1/filmeB      (local)       0      0 -                inativa 
 S2/filmeB      O2            2      2 -                inativa  O1(3) O3(3)
 S2/filmeC      O2            2      2 -                inativa  O1(3) O3(3)
 
 == O1
 Fluxo          Origem  Métrica Saltos Destinos         Estado   Alternativas
-S1/filmeA      S1            1      1 -                inativa  O3(2) O2(2)
-S1/filmeB      S1            1      1 -                inativa  O3(2) O2(2)
+S1/filmeA      S1            1      1 -                inativa  O2(2) O3(2)
+S1/filmeB      S1            1      1 -                inativa  O2(2) O3(2)
 S2/filmeB      O2            2      2 -                inativa  O3(3) S1(3)
 S2/filmeC      O2            2      2 -                inativa  O3(3) S1(3)
 
 == O2
 Fluxo          Origem  Métrica Saltos Destinos         Estado   Alternativas
-S1/filmeA      S1            1      1 O4,S2,cliente:127.10.0.101 ativa    O3(2) O1(2)
-S1/filmeB      S1            1      1 -                inativa  O3(2) O1(2)
+S1/filmeA      S1            1      1 O4,S2,cliente:127.10.0.101 ativa    O1(2) O3(2)
+S1/filmeB      S1            1      1 -                inativa  O1(2) O3(2)
 S2/filmeB      S2            1      1 -                inativa  O4(2)
 S2/filmeC      S2            1      1 -                inativa  O4(2)
 
 == O3
 Fluxo          Origem  Métrica Saltos Destinos         Estado   Alternativas
-S1/filmeA      S1            1      1 cliente:127.10.0.102 ativa    O1(2) O2(2) O4(3)
-S1/filmeB      S1            1      1 -                inativa  O1(2) O2(2) O4(3)
-S2/filmeB      O2            2      2 -                inativa  O1(3) S1(3) O4(2)
-S2/filmeC      O2            2      2 -                inativa  O1(3) S1(3) O4(2)
+S1/filmeA      S1            1      1 cliente:127.10.0.102 ativa    O2(2) O1(2) O4(3)
+S1/filmeB      S1            1      1 -                inativa  O2(2) O1(2) O4(3)
+S2/filmeB      O2            2      2 -                inativa  S1(4) O4(2) O1(3)
+S2/filmeC      O2            2      2 -                inativa  S1(4) O4(2) O1(3)
 
 == O4
 Fluxo          Origem  Métrica Saltos Destinos         Estado   Alternativas
-S1/filmeA      O2            2      2 cliente:127.10.0.103 ativa    O3(2) S2(3)
-S1/filmeB      O2            2      2 -                inativa  O3(2) S2(3)
-S2/filmeB      S2            1      1 -                inativa  O2(2) O3(3)
-S2/filmeC      S2            1      1 -                inativa  O2(2) O3(3)
+S1/filmeA      O2            2      2 cliente:127.10.0.103 ativa    S2(3) O3(2)
+S1/filmeB      O2            2      2 -                inativa  S2(3) O3(2)
+S2/filmeB      S2            1      1 -                inativa  O2(3) O3(3)
+S2/filmeC      S2            1      1 -                inativa  O2(3) O3(3)
 
 == S2
 Fluxo          Origem  Métrica Saltos Destinos         Estado   Alternativas

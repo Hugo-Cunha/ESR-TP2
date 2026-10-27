@@ -124,6 +124,12 @@ def escolher_servidores(db):
             db.obter_fluxo(servidor, cliente["stream"]).clientes.add(ip)
 
 
+def carga(db, ip_vizinho, servidor):
+    """Nº de fluxos ativos de OUTROS servidores que recebemos deste vizinho."""
+    return sum(1 for f in db.fluxos.values()
+               if f.pedido_a == ip_vizinho and f.servidor != servidor and f.preciso())
+
+
 def melhor_servidor(db, stream):
     """Servidor com a stream e menor custo (se este nó for um servidor que a tem, é ele)."""
     if stream in db.streams_locais:

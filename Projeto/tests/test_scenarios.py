@@ -222,10 +222,47 @@ def t8_poda():
     o.stop_all()
 
 
+def t9_metrica_perdas():
+    print("T9: métrica de perdas (30% de perdas numa ligação, medidas com o próprio vídeo)")
+    o = setup("t9")
+    client(o, "C3", "filmeA")             # O4 chega ao S1 por O2 ou O3 (2 saltos cada)
+    time.sleep(7)
+    a = origem(o, "O4", "S1/filmeA")
+    b = "O3" if a == "O2" else "O2"
+    o.ottctl("S1", f"perda {o.ip[a]} 30")  # o S1 descarta 30% do vídeo que envia ao relay a
+    time.sleep(13)                         # janela de medição (5 s) + anúncio seguinte
+    p1 = origem(o, "O4", "S1/filmeA")
+    linha = next((l for l in o.ottctl(a, "vizinhos").splitlines() if l.startswith("S1 ")), "")
+    with open(os.path.join(OUT, "t9", "vizinhos_" + a + ".txt"), "w") as f:
+        f.write(o.ottctl(a, "vizinhos"))
+    check("T9", p1 == b and healthy(o, "C3"),
+          f"perdas em S1->{a}: O4 troca a Origem {a} -> {p1}; ligação vista por {a}: {' '.join(linha.split()[4:])}")
+    o.stop_all()
+
+
+def t10_route_poisoning():
+    print("T10: route poisoning + condição de viabilidade (sem caminho completo nos anúncios)")
+    o = setup("t10")
+    client(o, "C4", "filmeA")             # C4 -> S2; o S2 chega ao S1 por O2 (custo 2)
+    time.sleep(7)
+    via = origem(o, "S2", "S1/filmeA")
+    o.kill(via)
+    time.sleep(6)
+    s = o.last_stats("C4")
+    log_s2 = o.log("S2")
+    envenenou = "custo infinito" in log_s2 or "retirou a rota" in log_s2
+    nova = origem(o, "S2", "S1/filmeA")
+    check("T10", healthy(o, "C4") and nova not in (via, None) and fnum(s["maior_falha"]) < 2000,
+          f"{via} morreu: o S2 recusou a rota velha (não viável), anunciou custo infinito={envenenou} "
+          f"e passou a receber via {nova}; maior falha no C4 {s['maior_falha']}")
+    o.stop_all()
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     tests = [t1_basico, t2_arvore, t3_falha_relay, t4_saida_ordeira, t4b_falha_silenciosa,
-             t5_onode_do_cliente, t6_metrica_atraso, t7_escolha_servidor, t8_poda]
+             t5_onode_do_cliente, t6_metrica_atraso, t7_escolha_servidor, t8_poda,
+             t9_metrica_perdas, t10_route_poisoning]
     only = os.environ.get("ONLY")
     for t in tests:
         if only and not t.__name__.startswith(only):

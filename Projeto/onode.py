@@ -48,6 +48,7 @@ def comandos_base(db):
         "vizinhos": lambda args: db.tabela_vizinhos(),
         "rotas": lambda args: db.tabela_rotas(),
         "delay": lambda args: definir_atraso(db, args),
+        "perda": lambda args: definir_perda(db, args),
     }
 
 
@@ -56,6 +57,14 @@ def definir_atraso(db, args):
     ip, ms = args[0], float(args[1])
     db.atrasos[ip] = ms / 1000
     return f"atraso para {db.nome_de(ip)} = {ms:.0f} ms"
+
+
+def definir_perda(db, args):
+    """(testes sem CORE) perda <ip> <pct>: descarta essa % dos pacotes de vídeo
+    enviados a esse vizinho (emula uma ligação com perdas)."""
+    ip, pct = args[0], float(args[1])
+    db.perdas_emuladas[ip] = pct
+    return f"perdas emuladas para {db.nome_de(ip)} = {pct:.0f}%"
 
 
 def executar(comandos, linha):

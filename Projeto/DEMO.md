@@ -36,7 +36,7 @@ Sem janela: acrescentar `--sem-gui`.
 | Comando | Onde | Mostra |
 |---|---|---|
 | `rotas` | onodes e servidores | Fluxo, Origem, Métrica, Saltos, Destinos (vizinhos e `cliente:IP`), Estado, Alternativas |
-| `vizinhos` | onodes e servidores | vizinhos, ligado/desligado, RTT |
+| `vizinhos` | onodes e servidores | vizinhos, RTT, perdas, carga e decomposição do custo de cada ligação |
 | `ping` | servidor | PING pelos fluxos ativos; cada nó escreve o caminho no seu terminal |
 | `play filmeC` / `stop` | cliente | muda de stream / pára |
 | `sair` (ou Ctrl+C) | todos | sai avisando os vizinhos (ADEUS) / o onode (PARAR) |
@@ -47,17 +47,19 @@ Sem janela: acrescentar `--sem-gui`.
 |---|---|---|---|
 | 1 | Arrancar bootstrapper e onodes | `Registado como O3 ...; vizinhos: ...` | "O bootstrapper só dá a cada onode o nome e os vizinhos; depois não intervém." |
 | 2 | Arrancar os clientes | cliente: `Onode 10.0.19.21: a enviar` | "O cliente só conhece o seu onode; não sabe nada de rotas." |
-| 3 | `rotas` no PC2 (O3) | Origem para S1 e S2; `cliente:10.0.19.20` nos Destinos | "O onode escolhe o servidor e o caminho pelo cliente." |
+| 3 | `rotas` no PC2 (O3) | Origem para S1 e S2; `cliente:10.0.19.20` nos Destinos | "Cada onode só sabe por que vizinho chega a cada servidor e com que custo; não conhece o caminho. O onode escolhe o servidor pelo cliente." |
 | 4 | `rotas` no PC4 (O2) | um fluxo com 2+ Destinos | "Recebe uma cópia e replica-a: é a árvore de distribuição." |
 | 5 | `ping` no Server (S1) | caminho em cada terminal: `S1 > O3`, ... | Etapa 3. |
-| 6 | `rotas` no PC9 (O4) e ver a Origem do fluxo em uso → **Ctrl+C nesse relay** | a Origem do O4 muda; o cliente do PC8 continua a ver | "Falha de um nó intermédio: a rota muda sozinha (ADEUS, desvio imediato)." |
+| 6 | `rotas` no PC9 (O4) e ver a Origem do fluxo em uso → **Ctrl+C nesse relay** | a Origem do O4 muda; o cliente do PC8 continua a ver; noutros nós pode aparecer `custo infinito` | "Falha de um nó intermédio: escolhe-se outra Origem viável; quem fica sem alternativa anuncia custo infinito (route poisoning)." |
 | 7 | Voltar a arrancar esse relay | `Vizinho ... ligado` | "Volta a entrar sozinho." |
 | 8 | **Ctrl+C no PC2 (O3)**, o onode do cliente do PC3 | cliente: `o onode não responde`, fps=0 | "O cliente só conhece este onode: se ele morre, o cliente fica sem vídeo..." |
 | 9 | Voltar a arrancar o O3 | cliente: `a enviar`, vídeo volta | "...e quando volta, o vídeo volta sozinho (o cliente continua a pedir de 1 em 1 s)." |
-| 10 | Duplo clique numa ligação usada (ex.: R1–R3) → **Delay 40000 µs** | ao fim de ~5 s a Origem muda em `rotas` | "A métrica é 1 por salto + 1 por cada 5 ms de atraso, medido com ALIVE." |
-| 11 | **Ctrl+C no Server (S1)** | o cliente do PC3 (filmeB) passa a receber do S2 (`trocas` nas STATS) | "O filmeB está nos dois servidores; o onode muda para o outro." |
-| 12 | `stop` num cliente | `poda` nos terminais acima; em `rotas`, `inativa` | "Sem clientes não há tráfego." |
-| 13 | (opcional) Wireshark num relay, filtro `udp.port==6001` | 1 fluxo a entrar, N a sair | prova de que não há marosca |
+| 10 | `vizinhos` no PC2 (O3) | coluna "Custo da ligação" = 1 + 2×A + 3×P + 1×C | "A métrica pondera salto, atraso (ALIVE), perdas (medidas com o próprio vídeo) e carga; não usa pacotes extra." |
+| 11 | Duplo clique numa ligação usada (ex.: R1–R3) → **Delay 40000 µs** | ao fim de ~5 s a Origem muda em `rotas`; em `vizinhos` o custo sobe para 1 + 2×8 | "O atraso pesa 2 por cada 5 ms." |
+| 12 | Na mesma ligação: Delay 0 e **Loss 20%** | ao fim de ~10 s, em `vizinhos`, Perdas ≈ 20% e o custo sobe 3×4; a Origem muda | "As perdas medem-se pelas lacunas no nº de sequência de cada ligação." |
+| 13 | **Ctrl+C no Server (S1)** | o cliente do PC3 (filmeB) passa a receber do S2 (`trocas` nas STATS) | "O filmeB está nos dois servidores; o onode muda para o outro." |
+| 14 | `stop` num cliente | `poda` nos terminais acima; em `rotas`, `inativa` | "Sem clientes não há tráfego." |
+| 15 | (opcional) Wireshark num relay, filtro `udp.port==6001` | 1 fluxo a entrar, N a sair | prova de que não há marosca |
 
 ## 4. Se algo correr mal
 

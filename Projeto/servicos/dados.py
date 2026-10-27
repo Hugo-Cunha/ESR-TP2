@@ -1,6 +1,7 @@
 # Serviços de DADOS (UDP): emissão das streams no servidor, reencaminhamento
 # nos nós intermédios e PING de teste do caminho (Etapa 3).
 
+import random
 import socket
 import threading
 import time
@@ -19,7 +20,13 @@ def abrir_socket_dados(db):
     db.sock_dados.bind((db.bind_ip, config.DATA_PORT))
 
 
-def enviar_dados(db, pacote, ip):
+def enviar_dados(db, pacote, ip, mais_um_salto):
+    """Envia uma cópia do pacote a um vizinho (ou cliente), com o nº de sequência
+    dessa ligação (é com ele que o vizinho mede as perdas)."""
+    db.seq_tx[ip] = db.seq_tx.get(ip, 0) + 1
+    pacote = pacote_dados.para_ligacao(pacote, db.seq_tx[ip], mais_um_salto)
+    if random.random() * 100 < db.perdas_emuladas.get(ip, 0):
+        return                                # (testes) emula perdas na ligação
     atraso = db.atrasos.get(ip)
     if atraso:                                # (testes) emula atraso na ligação
         threading.Timer(atraso, db.sock_dados.sendto, (pacote, (ip, config.DATA_PORT))).start()
@@ -50,7 +57,7 @@ def svc_emitir_stream(db, stream, ficheiro):
                        ssrc=ssrc, timestamp=(video.frameNbr() * 90000 // config.FPS) % 2**32, payload=frame)
             pacote = pacote_dados.criar(db.meu_ip, stream, 0, time.time(), rtp.getPacket())
             for ip in destinos:
-                enviar_dados(db, pacote, ip)
+                enviar_dados(db, pacote, ip, mais_um_salto=False)
         time.sleep(1 / config.FPS)
 
 
@@ -63,8 +70,11 @@ def svc_receber_dados(db):
         lido = pacote_dados.ler(pacote)
         if lido is None:
             continue
-        servidor, stream, saltos, t_envio, _ = lido
+        servidor, stream, saltos, seq_ligacao, t_envio, _ = lido
         with db.lock:
+            v = db.vizinhos.get(ip_origem)
+            if v is not None:                 # medição passiva das perdas desta ligação
+                vizinhos.registar_seq_recebido(v, seq_ligacao)
             rota = db.rotas.get(servidor)
             fluxo = db.fluxos.get((servidor, stream))
             # só aceitamos o pacote se vier da nossa Origem para esse servidor
@@ -73,9 +83,8 @@ def svc_receber_dados(db):
             destinos = list(fluxo.destinos) + list(fluxo.clientes)
         # uma cópia para cada destino e para cada cliente ligado a este nó
         # (é aqui que se "replica" na árvore)
-        reenviar = pacote_dados.mais_um_salto(pacote)
         for ip in destinos:
-            enviar_dados(db, reenviar, ip)
+            enviar_dados(db, pacote, ip, mais_um_salto=True)
 
 
 ##################################################################################
