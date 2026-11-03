@@ -24,8 +24,14 @@ PESO_SALTO = 1
 PESO_ATRASO = 2
 PESO_PERDAS = 3
 PESO_CARGA = 1
-DEGRAU_ATRASO_MS = 5    # A = atraso num sentido / 5 ms (arredondado)
+DEGRAU_ATRASO_MS = 10   # A = RTT da ligação / 10 ms (arredondado); usa-se o RTT inteiro
+                        # porque a ida e a volta podem demorar tempos diferentes
 DEGRAU_PERDAS_PCT = 5   # P = perdas (%) / 5 (arredondado)
 JANELA_PERDAS = 5.0     # janela de medição das perdas (s)
+
+# Reparação do overlay (falhas duplas): um nó que fica sem caminho para nenhum
+# servidor liga-se diretamente a um vizinho dos vizinhos que morreram.
+REPARAR_ESPERA = 2.0    # tempo isolado antes de abrir a ligação de recurso (s)
+PESO_RECURSO = 10       # custo extra de uma ligação de recurso: só é usada se não houver outra
 
 FPS = 20                # frames por segundo emitidas pelo servidor (1 a cada 50 ms)

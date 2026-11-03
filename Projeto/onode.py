@@ -15,7 +15,7 @@ import threading
 from comum import config, log as log_mod
 from comum.log import log
 from database import Database
-from servicos import clientes, dados, fluxos, rotas, vizinhos
+from servicos import clientes, dados, fluxos, reparacao, rotas, vizinhos
 
 
 def iniciar(bootstrapper, ip="0.0.0.0", atrasos=None):
@@ -34,6 +34,7 @@ def iniciar(bootstrapper, ip="0.0.0.0", atrasos=None):
         fluxos.svc_manter_fluxos,         # refresca/expira pedidos de fluxos
         dados.svc_receber_dados,          # recebe e reencaminha o vídeo
         clientes.svc_clientes,            # atende os clientes ligados a este nó
+        reparacao.svc_reparar_overlay,    # falhas duplas: ligação de recurso
     ]
     for svc in servicos:
         threading.Thread(target=svc, args=(db,), daemon=True).start()
@@ -47,6 +48,7 @@ def comandos_base(db):
     return {
         "vizinhos": lambda args: db.tabela_vizinhos(),
         "rotas": lambda args: db.tabela_rotas(),
+        "estado": lambda args: db.estado_json(),     # para tools/arvore.py
         "delay": lambda args: definir_atraso(db, args),
         "perda": lambda args: definir_perda(db, args),
     }

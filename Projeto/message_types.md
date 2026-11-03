@@ -40,13 +40,20 @@ Resposta do bootstrapper quando o IP não existe na configuração.
 Primeira mensagem numa ligação TCP nova entre dois vizinhos (porta 6000). Quem tem o IP menor liga e envia primeiro; o outro responde com outro OLA.
 
 ```json
-{"tipo": "OLA", "origem": "10.0.17.20", "dados": {"nome": "O2"}}
+{"tipo": "OLA", "origem": "10.0.17.20", "dados": {"nome": "O2",
+    "vizinhos": [{"ip": "10.0.18.20", "nome": "S1"}, {"ip": "10.0.20.20", "nome": "O4"}],
+    "recurso": false}}
 ```
+
+| Campo | Significado |
+|---|---|
+| `vizinhos` | os vizinhos de quem envia (só um nível). Serve apenas para a reparação em falhas duplas: se este nó e os outros caminhos morrerem, quem recebe sabe a quem se pode ligar diretamente |
+| `recurso` | `true` numa **ligação de recurso** (aberta por um nó que ficou sem caminho para nenhum servidor, a um vizinho de um vizinho morto; README, secção 5.1). É temporária, custa mais 10 na métrica e é fechada com `ADEUS` quando deixa de ser precisa |
 
 ## ALIVE / ALIVE_RESP
 Enviada de **1 em 1 s** a cada vizinho. O vizinho devolve o mesmo `t` num ALIVE_RESP e quem enviou calcula `RTT = agora - t`. Serve para duas coisas:
 - **deteção de falhas**: se durante 3,5 s não chegar nada de um vizinho, ele é dado como morto;
-- **métrica**: o RTT/2 é o atraso da ligação (componente A do custo; ver README, secção 4).
+- **métrica**: o RTT é o atraso da ligação (componente A do custo; ver README, secção 4). Usa-se o RTT inteiro, e não RTT/2, porque a ida e a volta podem demorar tempos diferentes.
 
 ```json
 {"tipo": "ALIVE",      "origem": "10.0.17.20", "dados": {"t": 1761569000.123}}

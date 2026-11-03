@@ -3,6 +3,7 @@
 # Todas as threads do nó partilham uma Database. Quem a lê ou altera deve
 # fazê-lo dentro de "with db.lock:" para não haver corridas.
 
+import json
 import threading
 import time
 
@@ -24,6 +25,12 @@ class Vizinho:
         self.rx_perdidos = 0
         self.janela_inicio = time.time()
         self.perdas_pct = 0.0           # perdas (%) da última janela completa
+        # Reparação do overlay (servicos/reparacao.py)
+        self.ja_ligado = False          # já esteve ligado (só um vizinho que caiu conta como morto)
+        self.levava_rota = False        # caiu quando era a nossa Origem para algum servidor (e não é servidor)
+        self.recurso = False            # ligação de recurso (não vem do bootstrapper; é temporária)
+        self.recurso_meu = False        # fui eu que a abri (e sou eu que a fecho)
+        self.livre_desde = None         # (recurso) desde quando não é precisa
 
     def ligado(self):
         return self.sock is not None
@@ -86,6 +93,9 @@ class Database:
         self.meu_ip = None              # dado pelo bootstrapper
         self.meu_nome = None
         self.vizinhos = {}              # ip -> Vizinho
+        self.vizinhos_de = {}           # ip de um vizinho -> os vizinhos DELE [{ip, nome}] (do OLA)
+        self.isolado_desde = None       # desde quando estamos sem caminho por causa de vizinhos mortos
+        self.recurso_tentado = {}       # ip -> instante da última tentativa de ligação de recurso
         self.rotas = {}                 # ip do servidor -> Rota
         self.fluxos = {}                # (servidor, stream) -> Fluxo
         self.streams_locais = {}        # (servidor) nome da stream -> ficheiro
@@ -125,11 +135,13 @@ class Database:
                       f"Custo da ligação (1×salto + 2×atraso + 3×perdas + 1×carga)"]
             for v in sorted(self.vizinhos.values(), key=lambda v: v.nome):
                 rtt = f"{sum(v.rtts) / len(v.rtts):.2f}" if v.rtts else "-"
-                linha = f"{v.nome:8} {v.ip:15} {'ligado' if v.ligado() else 'desligado':10} {rtt:>8}"
+                estado = ("recurso" if v.recurso else "ligado") if v.ligado() else "desligado"
+                linha = f"{v.nome:8} {v.ip:15} {estado:10} {rtt:>8}"
                 if v.ligado():
                     c = componentes_custo(self, v.ip, servidor=None)
                     linha += (f" {v.perdas_pct:6.1f}% {c['carga']:>6} "
-                              f"{c['total']} = 1 + 2×{c['atraso']} + 3×{c['perdas']} + 1×{c['carga']}")
+                              f"{c['total']} = 1 + 2×{c['atraso']} + 3×{c['perdas']} + 1×{c['carga']}"
+                              + (f" + {c['recurso']} (recurso)" if c['recurso'] else ""))
                 linhas.append(linha)
             return "\n".join(linhas)
 
@@ -154,6 +166,21 @@ class Database:
                                   f"{rota.saltos if rota.saltos is not None else '-':>6} "
                                   f"{self._destinos(f):16} {estado:8} {alternativas}")
             return "\n".join(linhas)
+
+    def estado_json(self):
+        """Estado local em JSON (comando 'estado'), para a ferramenta tools/arvore.py.
+        Só tem o que o nó sabe: a sua Origem por servidor e os seus Destinos."""
+        with self.lock:
+            rotas = [{"servidor": r.nome_servidor, "origem": self.nome_de(r.origem) if r.origem else None,
+                      "custo": r.custo, "saltos": r.saltos,
+                      "alternativas": {self.nome_de(ip): c.custo for ip, c in r.candidatos.items()
+                                       if ip != r.origem}}
+                     for r in self.rotas.values()]
+            fluxos = [{"fluxo": self.nome_fluxo(f), "destinos": sorted(self.nome_de(ip) for ip in f.destinos),
+                       "clientes": sorted(f.clientes)}
+                      for f in self.fluxos.values() if f.preciso()]
+            return json.dumps({"nome": self.meu_nome, "ip": self.meu_ip,
+                               "servidor": bool(self.streams_locais), "rotas": rotas, "fluxos": fluxos})
 
     def _destinos(self, f):
         if f is None:

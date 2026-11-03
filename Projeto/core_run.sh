@@ -4,7 +4,7 @@
 # cada nó da sessão CORE ativa.
 #
 # Uso (com a topologia já arrancada no CORE):
-#   ./core_run.sh start            # bootstrapper, 2 servidores, 4 relays, 4 clientes sem janela
+#   ./core_run.sh start            # bootstrapper, 2 servidores, 5 relays, 4 clientes sem janela
 #   ./core_run.sh status           # últimas estatísticas dos clientes
 #   ./core_run.sh log C1           # segue o log de um nó (Ctrl+C para sair)
 #   ./core_run.sh kill O2          # mata o programa num nó (teste de falha)
@@ -29,17 +29,17 @@ if [ -z "$SESSION" ]; then
 fi
 
 # nome overlay -> nó CORE (Topologia_test3)
-declare -A HOST=( [S1]=Server [S2]=PC6 [O1]=PC1 [O2]=PC4 [O3]=PC2 [O4]=PC9
-                  [C1]=PC5 [C2]=PC3 [C3]=PC8 [C4]=PC7 )
+declare -A HOST=( [S1]=Server [S2]=Server2 [O1]=PC1 [O2]=PC4 [O3]=PC2 [O4]=PC9 [O5]=PC7
+                  [C1]=PC5 [C2]=PC3 [C3]=PC8 [C4]=PC6 )
 declare -A PROG=( [S1]=servidor.py [S2]=servidor.py
-                  [O1]=onode.py [O2]=onode.py [O3]=onode.py [O4]=onode.py
+                  [O1]=onode.py [O2]=onode.py [O3]=onode.py [O4]=onode.py [O5]=onode.py
                   [C1]=cliente.py [C2]=cliente.py [C3]=cliente.py [C4]=cliente.py )
 declare -A ARGS=(
   [S1]="$BOOT filmeA filmeB" [S2]="$BOOT filmeB filmeC"
-  [O1]="$BOOT" [O2]="$BOOT" [O3]="$BOOT" [O4]="$BOOT"
+  [O1]="$BOOT" [O2]="$BOOT" [O3]="$BOOT" [O4]="$BOOT" [O5]="$BOOT"
   # clientes: <IP do seu onode> <stream>  (não falam com o bootstrapper)
   [C1]="10.0.17.20 filmeA --sem-gui" [C2]="10.0.19.21 filmeB --sem-gui"
-  [C3]="10.0.20.20 filmeC --sem-gui" [C4]="10.0.0.20 filmeB --sem-gui" )
+  [C3]="10.0.20.20 filmeC --sem-gui" [C4]="10.0.0.21 filmeB --sem-gui" )
 PROGRAMAS="onode.py|servidor.py|cliente.py"
 
 die() { echo "Erro: $*" >&2; exit 1; }
@@ -75,11 +75,11 @@ case "$1" in
       echo "AVISO: Server não chega a PC8 — o routing (OSPF) pode ainda não ter convergido."
     bg BOOT Bootstrapper python3 -u bootstrapper.py configs/overlay_topo3.json
     echo "  bootstrapper (PC Bootstrapper) arrancado"; sleep 1
-    for n in S1 S2 O1 O2 O3 O4; do arrancar $n; done
+    for n in S1 S2 O1 O2 O3 O4 O5; do arrancar $n; done
     sleep 3
     for n in C1 C2 C3 C4; do arrancar $n; done
     sleep 1
-    for f in BOOT S1 S2 O1 O2 O3 O4 C1 C2 C3 C4; do
+    for f in BOOT S1 S2 O1 O2 O3 O4 O5 C1 C2 C3 C4; do
       grep -qE "Traceback|Error" "$LOGS/$f.log" 2>/dev/null && { echo "!! $f teve um erro:"; tail -3 "$LOGS/$f.log"; }
     done
     echo "Pronto. Usa '$0 status' daqui a ~10 s (ou '$0 log C1')." ;;
@@ -94,7 +94,7 @@ case "$1" in
   shell) node "$2" bash ;;
   cmd)   # cmd <nome overlay> <comando...> : envia um comando ao nó a correr em fundo
     n=$2; shift 2
-    [[ "$n" =~ ^(S1|S2|O1|O2|O3|O4)$ ]] || die "só os onodes aceitam comandos (S1, S2, O1..O4)"
+    [[ "$n" =~ ^(S1|S2|O1|O2|O3|O4|O5)$ ]] || die "só os onodes aceitam comandos (S1, S2, O1..O5)"
     node "${HOST[$n]}" bash -c "cd '$DIR' && python3 ottctl.py $*" ;;
   stop)
     for h in "${HOST[@]}"; do node "$h" pkill -f "$PROGRAMAS" 2>/dev/null; done

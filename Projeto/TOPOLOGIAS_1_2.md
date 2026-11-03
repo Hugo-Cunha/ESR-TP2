@@ -2,7 +2,7 @@
 
 Em cada terminal (duplo clique no PC): `cd /volume/ESR-TP2/Projeto`. Arrancar por esta ordem: bootstrapper → servidores → onodes → clientes.
 
-Nestas topologias não há um PC livre só para o bootstrapper, por isso ele corre no **PC do cliente** (o cliente gasta pouco CPU; o professor não quer o bootstrapper num servidor).
+Em ambas as topologias o bootstrapper corre num PC próprio, **Bootstrapper** (10.0.0.23 na Topologia 1, 10.0.6.20 na Topologia 2). O guião completo da demonstração está em `DEMO.md`.
 
 ---
 
@@ -10,9 +10,9 @@ Nestas topologias não há um PC livre só para o bootstrapper, por isso ele cor
 
 | PC | IP | Papel | Comando |
 |---|---|---|---|
-| **PC2** | 10.0.0.21 | bootstrapper | `python3 bootstrapper.py configs/overlay_topo1.json` |
-| **Server** | 10.0.0.22 | S1 (filmeA, filmeB) | `python3 servidor.py 10.0.0.21 filmeA filmeB` |
-| **PC1** | 10.0.0.20 | O1 (onode) | `python3 onode.py 10.0.0.21` |
+| **Bootstrapper** | 10.0.0.23 | bootstrapper | `python3 bootstrapper.py configs/overlay_topo1.json` |
+| **Server** | 10.0.0.22 | S1 (filmeA, filmeB) | `python3 servidor.py 10.0.0.23 filmeA filmeB` |
+| **PC1** | 10.0.0.20 | O1 (onode) | `python3 onode.py 10.0.0.23` |
 | **PC2** | 10.0.0.21 | cliente, ligado ao O1 | `python3 cliente.py 10.0.0.20 filmeA` |
 
 Overlay: `S1 — O1 — cliente`. Serve para mostrar o básico: registo, ligação entre vizinhos, rota, PING (`ping` no Server) e vídeo a passar por um nó intermédio.
@@ -28,9 +28,9 @@ Overlay: `S1 — O1 — cliente`. Serve para mostrar o básico: registo, ligaç�
 
 | PC | IP | Papel | Comando |
 |---|---|---|---|
-| **PC2** | 10.0.5.20 | bootstrapper | `python3 bootstrapper.py configs/overlay_topo2.json` |
-| **Server1** | 10.0.1.20 | S1 (filmeA, filmeB) | `python3 servidor.py 10.0.5.20 filmeA filmeB` |
-| **PC1** | 10.0.0.20 | S2 (filmeB, filmeC) | `python3 servidor.py 10.0.5.20 filmeB filmeC` |
+| **Bootstrapper** | 10.0.6.20 | bootstrapper | `python3 bootstrapper.py configs/overlay_topo2.json` |
+| **Server1** | 10.0.1.20 | S1 (filmeA, filmeB) | `python3 servidor.py 10.0.6.20 filmeA filmeB` |
+| **PC1** | 10.0.0.20 | S2 (filmeB, filmeC) | `python3 servidor.py 10.0.6.20 filmeB filmeC` |
 | **PC2** | 10.0.5.20 | cliente, ligado ao S2 | `python3 cliente.py 10.0.0.20 filmeA` |
 
 Overlay: `S1 — S2 — cliente` (o S2 também é onode e reencaminha).

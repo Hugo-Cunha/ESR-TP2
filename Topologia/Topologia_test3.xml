@@ -54,6 +54,12 @@
         <service name="DefaultRoute"/>
       </services>
     </device>
+    <device id="27" name="Server2" icon="" canvas="1" type="PC" class="" image="" compose="" compose_name="">
+      <position x="34.0" y="90.0" lat="47.5783" lon="-122.1319" alt="2.0"/>
+      <services>
+        <service name="DefaultRoute"/>
+      </services>
+    </device>
     <device id="7" name="PC8" icon="" canvas="1" type="PC" class="" image="" compose="" compose_name="">
       <position x="40.2342643737793" y="337.5988464355469" lat="47.57609766381064" lon="-122.1317820729305" alt="2.0"/>
       <services>
@@ -180,6 +186,11 @@
       <iface1 id="0" name="eth0" mac="00:00:00:aa:00:00" ip4="10.0.0.20" ip4_mask="24" ip6="2001::14" ip6_mask="64"/>
       <iface2 id="0" name="veth13.0.1"/>
       <options delay="0" bandwidth="0" loss="0.0" dup="0" jitter="0" unidirectional="0" buffer="0"/>
+    </link>
+    <link node1="27" node2="13">
+      <iface1 id="0" name="eth0" mac="00:00:00:aa:00:99" ip4="10.0.0.22" ip4_mask="24" ip6="2001::16" ip6_mask="64" />
+      <iface2 id="5" name="veth13.5.1" />
+      <options delay="0" bandwidth="0" loss="0.0" dup="0" jitter="0" unidirectional="0" buffer="0" />
     </link>
     <link node1="6" node2="13">
       <iface1 id="0" name="eth0" mac="00:00:00:aa:00:01" ip4="10.0.0.21" ip4_mask="24" ip6="2001::15" ip6_mask="64"/>
@@ -333,7 +344,7 @@
     </link>
     <link node1="11" node2="26">
       <iface1 id="3" name="veth11.3.1"/>
-      <iface2 id="0" name="eth0" mac="00:00:00:aa:00:2f" ip4="10.0.18.10" ip4_mask="24" ip6="2001:0:0:12::16" ip6_mask="64"/>
+      <iface2 id="0" name="eth0" ip4="10.0.18.10" ip4_mask="24" ip6="2001:0:0:12::16" ip6_mask="64"/>
       <options delay="0" bandwidth="0" loss="0.0" dup="0" jitter="0" unidirectional="0" buffer="0"/>
     </link>
   </links>

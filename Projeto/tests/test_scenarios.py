@@ -5,8 +5,8 @@ Uso:
     python3 tests/test_scenarios.py [pasta_de_logs]
     ONLY=t6 python3 tests/test_scenarios.py        (só um teste)
 
-Overlay: S1 (filmeA, filmeB), S2 (filmeB, filmeC), O1..O4.
-Clientes e o seu onode (como no CORE): C1->O2, C2->O3, C3->O4, C4->S2.
+Overlay: S1 (filmeA, filmeB), S2 (filmeB, filmeC), O1..O5.
+Clientes e o seu onode (como no CORE): C1->O2, C2->O3, C3->O4, C4->O5.
 No fim é escrito um resumo em <pasta>/resultados.md (útil para o relatório).
 """
 
@@ -21,7 +21,7 @@ from local_overlay import TODOS, LocalOverlay  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CFG = os.path.join(ROOT, "configs", "overlay_topo3.json")
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "tests", "logs")
-ONODE_DE = {"C1": "O2", "C2": "O3", "C3": "O4", "C4": "S2"}
+ONODE_DE = {"C1": "O2", "C2": "O3", "C3": "O4", "C4": "O5"}
 
 results = []
 
@@ -40,7 +40,7 @@ def setup(name):
     o.start_bootstrapper()
     o.start("S1", "servidor.py", "filmeA", "filmeB")
     o.start("S2", "servidor.py", "filmeB", "filmeC")
-    for n in ("O1", "O2", "O3", "O4"):
+    for n in ("O1", "O2", "O3", "O4", "O5"):
         o.start(n)
     return o
 
@@ -94,7 +94,7 @@ def t2_arvore():
     check("T2", all(healthy(o, c) for c in ("C1", "C2", "C3", "C4")), "os 4 clientes recebem o filmeA")
     check("T2", 0 < len(dests) < 4, f"o S1 envia só {len(dests)} cópia(s) ({','.join(dests)}) para 4 clientes")
     with open(os.path.join(OUT, "t2", "tabelas.txt"), "w") as f:
-        for n in ("S1", "O1", "O2", "O3", "O4", "S2"):
+        for n in ("S1", "O1", "O2", "O3", "O4", "O5", "S2"):
             f.write(f"== {n}\n{o.ottctl(n, 'rotas')}\n")
     o.stop_all()
 
@@ -191,12 +191,12 @@ def t7_escolha_servidor():
     print("T7: filmeB está nos dois servidores: escolha do melhor e falha de servidor")
     o = setup("t7")
     client(o, "C2", "filmeB")             # O3 está a 1 salto do S1 e a 2 do S2
-    client(o, "C4", "filmeB")             # o onode do C4 é o próprio S2
+    client(o, "C4", "filmeB")             # O5 está a 1 salto do S2 e a 2 do S1
     time.sleep(8)
     a, b = o.last_stats("C2"), o.last_stats("C4")
     sa, sb = nome_servidor(o, a["servidor"]), nome_servidor(o, b["servidor"])
     check("T7", sa == "S1" and sb == "S2",
-          f"cada onode escolhe o melhor servidor: C2 (via O3) <- {sa}, C4 (via S2) <- {sb}")
+          f"cada onode escolhe o melhor servidor: C2 (via O3) <- {sa}, C4 (via O5) <- {sb}")
     o.kill("S1")
     time.sleep(9)
     a = o.last_stats("C2")
@@ -217,7 +217,7 @@ def t8_poda():
     off = linha_rota(o, "S1", "S1/filmeA")
     check("T8", " ativa" in on, f"com cliente: {on.strip()}")
     check("T8", "inativa" in off, f"sem cliente: {off.strip()}")
-    poda = sum(o.log(n).count("poda") for n in ("O1", "O2", "O3", "O4", "S1"))
+    poda = sum(o.log(n).count("poda") for n in ("O1", "O2", "O3", "O4", "O5", "S1"))
     check("T8", poda > 0, f"{poda} mensagens de poda registadas ao longo do ramo")
     o.stop_all()
 
@@ -243,18 +243,38 @@ def t9_metrica_perdas():
 def t10_route_poisoning():
     print("T10: route poisoning + condição de viabilidade (sem caminho completo nos anúncios)")
     o = setup("t10")
-    client(o, "C4", "filmeA")             # C4 -> S2; o S2 chega ao S1 por O2 (custo 2)
+    client(o, "C4", "filmeA")             # C4 -> O5; o O5 chega ao S1 por O2 (custo 2)
     time.sleep(7)
-    via = origem(o, "S2", "S1/filmeA")
+    via = origem(o, "O5", "S1/filmeA")
     o.kill(via)
     time.sleep(6)
     s = o.last_stats("C4")
-    log_s2 = o.log("S2")
-    envenenou = "custo infinito" in log_s2 or "retirou a rota" in log_s2
-    nova = origem(o, "S2", "S1/filmeA")
+    log_o5 = o.log("O5")
+    envenenou = "custo infinito" in log_o5 or "retirou a rota" in log_o5
+    nova = origem(o, "O5", "S1/filmeA")
     check("T10", healthy(o, "C4") and nova not in (via, None) and fnum(s["maior_falha"]) < 2000,
-          f"{via} morreu: o S2 recusou a rota velha (não viável), anunciou custo infinito={envenenou} "
+          f"{via} morreu: o O5 recusou a rota velha (não viável), anunciou custo infinito={envenenou} "
           f"e passou a receber via {nova}; maior falha no C4 {s['maior_falha']}")
+    o.stop_all()
+
+
+def t11_volta_a_melhor_rota():
+    print("T11: a melhor rota morre (troca para outra) e volta (regressa à melhor)")
+    o = setup("t11")
+    client(o, "C3", "filmeA")             # O4 -> O2 -> S1 (melhor); alternativa O3
+    time.sleep(7)
+    melhor = origem(o, "O4", "S1/filmeA")
+    o.kill(melhor)
+    time.sleep(6)
+    alternativa = origem(o, "O4", "S1/filmeA")
+    check("T11", alternativa not in (melhor, None) and healthy(o, "C3"),
+          f"{melhor} morreu: O4 passou para a alternativa {alternativa}")
+    o.start(melhor, "onode.py")
+    time.sleep(10)
+    de_volta = origem(o, "O4", "S1/filmeA")
+    s = o.last_stats("C3")
+    check("T11", de_volta == melhor and healthy(o, "C3"),
+          f"{melhor} voltou: O4 regressou à melhor Origem {de_volta} (maior falha no C3 {s['maior_falha']})")
     o.stop_all()
 
 
@@ -262,7 +282,7 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     tests = [t1_basico, t2_arvore, t3_falha_relay, t4_saida_ordeira, t4b_falha_silenciosa,
              t5_onode_do_cliente, t6_metrica_atraso, t7_escolha_servidor, t8_poda,
-             t9_metrica_perdas, t10_route_poisoning]
+             t9_metrica_perdas, t10_route_poisoning, t11_volta_a_melhor_rota]
     only = os.environ.get("ONLY")
     for t in tests:
         if only and not t.__name__.startswith(only):
@@ -273,6 +293,11 @@ def main():
             check(t.__name__, False, f"exceção: {e!r}")
         for o in TODOS:                   # garante que não ficam processos pendurados
             o.stop_all()
+    if not only:                          # nenhum destes cenários isola um nó
+        import glob
+        n = sum(open(f, errors="replace").read().count("a abrir ligação de recurso")
+                for f in glob.glob(os.path.join(OUT, "*", "*.log")))
+        check("Reparação", n == 0, f"nenhuma ligação de recurso aberta na Topologia 3 ({n})")
     ok = sum(1 for r in results if r[1])
     print(f"\n{ok}/{len(results)} verificações passaram")
     with open(os.path.join(OUT, "resultados.md"), "w") as f:

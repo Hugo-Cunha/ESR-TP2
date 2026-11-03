@@ -1,0 +1,11 @@
+{
+  "_comentario": "Topologia do extra das falhas duplas (só para testes): S1 - O4 - {O2, O3} - O1 - cliente; O5 é uma folha pendurada no O1 (só se arranca no teste F3). O1 e O4 não são vizinhos no overlay; se o O1 perder TODOS os vizinhos, abre uma ligação de recurso a O4.",
+  "nodes": {
+    "S1": {"ip": "10.0.30.20", "neighbours": ["O4"]},
+    "O4": {"ip": "10.0.30.24", "neighbours": ["O2", "O3"]},
+    "O2": {"ip": "10.0.30.22", "neighbours": ["O1"]},
+    "O3": {"ip": "10.0.30.23", "neighbours": ["O1"]},
+    "O1": {"ip": "10.0.30.21", "neighbours": []},
+    "O5": {"ip": "10.0.30.25", "neighbours": ["O1"]}
+  }
+}

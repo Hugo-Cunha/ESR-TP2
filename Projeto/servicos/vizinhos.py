@@ -97,7 +97,7 @@ def svc_aceitar_ligacoes(db):
 def svc_ligar_vizinhos(db):
     while db.a_correr:
         for v in list(db.vizinhos.values()):
-            if not v.ligado() and _sou_eu_a_ligar(db.meu_ip, v.ip):
+            if not v.ligado() and not v.recurso and _sou_eu_a_ligar(db.meu_ip, v.ip):
                 threading.Thread(target=_ligar, args=(db, v.ip), daemon=True).start()
         time.sleep(config.LIGAR_INTERVALO)
 
@@ -107,19 +107,30 @@ def _sou_eu_a_ligar(meu_ip, ip_vizinho):
     return ipaddress.ip_address(meu_ip) < ipaddress.ip_address(ip_vizinho)
 
 
-def _ligar(db, ip):
+def _ligar(db, ip, recurso=False):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if db.bind_ip != "0.0.0.0":
             sock.bind((db.bind_ip, 0))
         sock.settimeout(2)
         sock.connect((ip, config.CONTROL_PORT))
-        cumprimentar(db, sock, True)
+        cumprimentar(db, sock, True, recurso)
     except OSError:
-        pass                                  # o vizinho ainda não está ativo; tenta-se depois
+        if recurso:                           # ligação de recurso falhada: esquece-se o candidato
+            with db.lock:
+                v = db.vizinhos.get(ip)
+                if v is not None and v.recurso and not v.ligado():
+                    del db.vizinhos[ip]
 
 
-def cumprimentar(db, sock, fui_eu_a_ligar):
+def ola(db, recurso):
+    """OLA leva o nosso nome e a lista dos NOSSOS vizinhos (só um nível): é o que
+    permite a um vizinho reparar o overlay se nós e outro vizinho morrermos."""
+    meus = [{"ip": v.ip, "nome": v.nome} for v in db.vizinhos.values() if not v.recurso]
+    return Mensagem(Mensagem.OLA, db.meu_ip, {"nome": db.meu_nome, "vizinhos": meus, "recurso": recurso})
+
+
+def cumprimentar(db, sock, fui_eu_a_ligar, recurso=False):
     """Troca de OLA entre os dois nós; depois a ligação fica registada no vizinho."""
     try:
         sock.settimeout(config.VIZINHO_TIMEOUT)
@@ -127,26 +138,33 @@ def cumprimentar(db, sock, fui_eu_a_ligar):
         # atrasa-as até ~40 ms, o que estragava as medições de RTT (e a métrica).
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         leitor = LeitorMensagens(sock)
-        ola = Mensagem(Mensagem.OLA, db.meu_ip, {"nome": db.meu_nome})
         if fui_eu_a_ligar:
-            sock.sendall(ola.serialize())
+            with db.lock:
+                sock.sendall(ola(db, recurso).serialize())
         resposta = leitor.ler()
         if resposta is None or resposta.tipo != Mensagem.OLA:
             sock.close()
             return
         if not fui_eu_a_ligar:
-            sock.sendall(ola.serialize())
+            recurso = bool(resposta.dados.get("recurso"))
+            with db.lock:
+                sock.sendall(ola(db, recurso).serialize())
     except OSError:
         sock.close()
         return
 
     ip = resposta.origem
     with db.lock:
-        v = db.vizinhos.setdefault(ip, Vizinho(ip, resposta.dados["nome"]))
+        v = db.vizinhos.get(ip)
+        if v is None:                         # não veio do bootstrapper: é uma ligação de recurso
+            v = db.vizinhos[ip] = Vizinho(ip, resposta.dados["nome"])
+            v.recurso = recurso
         if v.ligado():                        # ligação antiga (ex.: o vizinho reiniciou)
             v.sock.close()
         v.sock, v.ligado_desde, v.rtts = sock, time.time(), []
-        log(f"Vizinho {v.nome} ({ip}) ligado")
+        v.ja_ligado, v.livre_desde, v.levava_rota = True, None, False
+        db.vizinhos_de[ip] = resposta.dados.get("vizinhos", [])
+        log(f"Vizinho {v.nome} ({ip}) ligado" + (" (ligação de recurso)" if v.recurso else ""))
     threading.Thread(target=svc_ouvir_vizinho, args=(db, ip, sock, leitor), daemon=True).start()
     with db.lock:
         rotas.dar_a_conhecer_rotas(db, ip)    # o vizinho novo fica logo a saber das rotas
@@ -199,8 +217,13 @@ def vizinho_em_baixo(db, ip, sock, motivo):
         v.sock.close()
         v.sock = None
         log(f"Vizinho {v.nome} ({ip}) em baixo: {motivo}")
+        # (reparação) um onode intermédio que nos levava a rota? Um servidor morto não conta:
+        # ligar aos vizinhos dele não o traz de volta. (Um servidor tem rota para si próprio.)
+        v.levava_rota = ip not in db.rotas and any(r.origem == ip for r in db.rotas.values())
         rotas.esquecer_vizinho(db, ip)
         fluxos.esquecer_vizinho(db, ip)
+        if v.recurso:                         # ligações de recurso são temporárias: esquecem-se
+            del db.vizinhos[ip]
         fluxos.atualizar(db)
 
 
@@ -229,9 +252,12 @@ def handle_alive_resp(db, ip, msg):
 #
 #   custo = PESO_SALTO×1 + PESO_ATRASO×A + PESO_PERDAS×P + PESO_CARGA×C
 #
-#   A = atraso num sentido (RTT/2, média dos 3 últimos ALIVE) em degraus de 5 ms
+#   A = RTT da ligação (média dos 3 últimos ALIVE) em degraus de 10 ms. Usa-se o
+#       RTT inteiro e não RTT/2: a ida e a volta não têm de demorar o mesmo.
 #   P = perdas na ligação vizinho -> nós (medidas com o vídeo) em degraus de 5 %
 #   C = nº de fluxos de OUTROS servidores que já recebemos deste vizinho
+#   + PESO_RECURSO se for uma ligação de recurso (servicos/reparacao.py): assim
+#     só é usada quando não há outro caminho, e deixa de o ser quando ele volta.
 #
 # Os degraus fazem com que pequenas variações (ruído de medição) não alterem o
 # custo e, portanto, não façam as rotas oscilar. A carga só conta fluxos de
@@ -239,7 +265,7 @@ def handle_alive_resp(db, ip, msg):
 #
 # Exemplos (pesos 1, 2, 3, 1):
 #   ligação sem atraso, sem perdas, sem carga        -> 1         (= contar saltos)
-#   ligação com 40 ms de atraso                      -> 1 + 2×8 = 17
+#   ligação com RTT de 80 ms (40 ms em cada sentido) -> 1 + 2×8 = 17
 #   ligação com 10 % de perdas                       -> 1 + 3×2 = 7
 #   ligação que já leva 2 fluxos de outro servidor   -> 1 + 1×2 = 3
 
@@ -247,12 +273,13 @@ def componentes_custo(db, ip, servidor):
     v = db.vizinhos[ip]
     atraso = 0
     if len(v.rtts) >= 3:                      # a 1.ª medição sai inflacionada no arranque
-        atraso = round(sum(v.rtts) / len(v.rtts) / 2 / config.DEGRAU_ATRASO_MS)
+        atraso = round(sum(v.rtts) / len(v.rtts) / config.DEGRAU_ATRASO_MS)
     perdas = round(v.perdas_pct / config.DEGRAU_PERDAS_PCT)
     carga = fluxos.carga(db, ip, servidor)
+    recurso = config.PESO_RECURSO if v.recurso else 0
     total = (config.PESO_SALTO + config.PESO_ATRASO * atraso
-             + config.PESO_PERDAS * perdas + config.PESO_CARGA * carga)
-    return {"atraso": atraso, "perdas": perdas, "carga": carga, "total": total}
+             + config.PESO_PERDAS * perdas + config.PESO_CARGA * carga + recurso)
+    return {"atraso": atraso, "perdas": perdas, "carga": carga, "recurso": recurso, "total": total}
 
 
 def custo_ligacao(db, ip, servidor):
