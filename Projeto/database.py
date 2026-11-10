@@ -17,17 +17,19 @@ class Vizinho:
         self.sock = None                # socket TCP; None = não estamos ligados
         self.lock_envio = threading.Lock()
         self.ligado_desde = None
-        self.rtts = []                  # últimas medições de RTT (ms), pelo ALIVE
-        # Perdas na ligação vizinho -> eu, medidas passivamente com o vídeo
-        # (cada pacote traz um nº de sequência da ligação; buracos = perdas)
+        self.iniciada_pelo_menor = False # a ligação atual foi aberta pelo nó de IP menor
+        self.rtts = []                  # 2 últimas medições de RTT (ms), pelo ALIVE
+        self.n_rtts = 0                 # nº de medições feitas (a 1.ª é ignorada)
+        self.tx_msgs = 0                # mensagens de controlo enviadas a este vizinho
+        self.tx_bytes = 0
+        # Perdas na ligação vizinho -> eu, medidas passivamente com o vídeo (só
+        # informativas). Cada pacote traz um nº de sequência da ligação.
         self.seq_rx = None              # último nº de sequência recebido deste vizinho
         self.rx_recebidos = 0           # contadores da janela atual
         self.rx_perdidos = 0
         self.janela_inicio = time.time()
         self.perdas_pct = 0.0           # perdas (%) da última janela completa
         # Reparação do overlay (servicos/reparacao.py)
-        self.ja_ligado = False          # já esteve ligado (só um vizinho que caiu conta como morto)
-        self.levava_rota = False        # caiu quando era a nossa Origem para algum servidor (e não é servidor)
         self.recurso = False            # ligação de recurso (não vem do bootstrapper; é temporária)
         self.recurso_meu = False        # fui eu que a abri (e sou eu que a fecho)
         self.livre_desde = None         # (recurso) desde quando não é precisa
@@ -93,9 +95,13 @@ class Database:
         self.meu_ip = None              # dado pelo bootstrapper
         self.meu_nome = None
         self.vizinhos = {}              # ip -> Vizinho
-        self.vizinhos_de = {}           # ip de um vizinho -> os vizinhos DELE [{ip, nome}] (do OLA)
-        self.isolado_desde = None       # desde quando estamos sem caminho por causa de vizinhos mortos
+        # Reparação (servicos/reparacao.py): servidor -> {"ip", "nome", "via", "sem_caminho_desde"}
+        # = o próximo salto do único vizinho que nos resta (pedido com ENDANGERED)
+        self.reservas = {}
+        self.em_perigo = {}             # servidor -> vizinho a quem já enviámos ENDANGERED
         self.recurso_tentado = {}       # ip -> instante da última tentativa de ligação de recurso
+        self.seq_anuncio = None         # (servidor) seq da ronda de anúncios atual
+        self.ultimo_pedido_seq = {}     # servidor -> instante do último PEDIDO_SEQ (limite de ritmo)
         self.rotas = {}                 # ip do servidor -> Rota
         self.fluxos = {}                # (servidor, stream) -> Fluxo
         self.streams_locais = {}        # (servidor) nome da stream -> ficheiro
@@ -138,7 +144,7 @@ class Database:
                 estado = ("recurso" if v.recurso else "ligado") if v.ligado() else "desligado"
                 linha = f"{v.nome:8} {v.ip:15} {estado:10} {rtt:>8}"
                 if v.ligado():
-                    c = componentes_custo(self, v.ip, servidor=None)
+                    c = componentes_custo(self, v.ip)
                     linha += (f" {v.perdas_pct:6.1f}% {c['carga']:>6} "
                               f"{c['total']} = 1 + 2×{c['atraso']} + 3×{c['perdas']} + 1×{c['carga']}"
                               + (f" + {c['recurso']} (recurso)" if c['recurso'] else ""))
@@ -179,8 +185,11 @@ class Database:
             fluxos = [{"fluxo": self.nome_fluxo(f), "destinos": sorted(self.nome_de(ip) for ip in f.destinos),
                        "clientes": sorted(f.clientes)}
                       for f in self.fluxos.values() if f.preciso()]
+            controlo = {v.nome: {"msgs": v.tx_msgs, "bytes": v.tx_bytes,
+                                 "video": self.seq_tx.get(v.ip, 0)} for v in self.vizinhos.values()}
             return json.dumps({"nome": self.meu_nome, "ip": self.meu_ip,
-                               "servidor": bool(self.streams_locais), "rotas": rotas, "fluxos": fluxos})
+                               "servidor": bool(self.streams_locais), "rotas": rotas, "fluxos": fluxos,
+                               "controlo_enviado": controlo})
 
     def _destinos(self, f):
         if f is None:

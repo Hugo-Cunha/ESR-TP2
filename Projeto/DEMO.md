@@ -87,8 +87,8 @@ Overlay (`configs/overlay_topo2.json`): `S1 — S2`; o cliente liga-se ao S2 (um
 | 5 | `play filmeB` no cliente | `rotas` no PC1: `S2/filmeB (local) ... cliente:10.0.5.20 ativa`; no Server1 o filmeA fica `inativa` | "O filmeB está nos dois servidores; o onode escolhe o de menor custo, aqui ele próprio (custo 0). O S1 deixa de enviar (poda)." |
 | 6 | `play filmeA` no cliente; **Ctrl+C no Server1** | cliente: `nenhum servidor tem esta stream (ainda)` | "Só o S1 tinha o filmeA; o S1 avisa ao sair (ADEUS) e a rota desaparece." |
 | 7 | Voltar a arrancar o S1 | o vídeo volta | "O S1 volta a anunciar-se e a rota reaparece sozinha." |
-| 8 | `vizinhos` no PC1 | custo da ligação ao S1 = `1 = 1 + 2×0 + 3×0 + 1×0` | "A métrica: salto, atraso, perdas e carga." |
-| 9 | Duplo clique na ligação **R1–R3** → **Delay 40000 µs** | ao fim de ~5 s, em `vizinhos` no PC1, o custo da ligação ao S1 sobe para 1 + 2×8 = 17; `rotas` mostra Métrica 17 | "O OSPF não liga ao atraso, mas o overlay mede-o com o ALIVE." |
+| 8 | `vizinhos` no PC1 | custo da ligação ao S1 = `1 = 1 + 2×0 + 3×0 + 1×0` | "A métrica: salto, atraso (RTT local), perdas e carga." |
+| 9 | Duplo clique na ligação **R1–R3** → **Delay 40000 µs** | ao fim de 1–2 heartbeats (10–20 s), em `vizinhos` no PC1, o custo da ligação ao S1 sobe para 1 + 2×8 = 17; `rotas` mostra Métrica 17 | "O OSPF não liga ao atraso, mas o overlay mede-o com o ALIVE." |
 | 10 | Delay 0 e **Loss 20%** na mesma ligação | ao fim de ~10 s, Perdas ≈ 20% e o custo sobe 3×4 | "As perdas medem-se com o próprio vídeo, pelas lacunas no nº de sequência." |
 
 Nota: com só um caminho no overlay, o atraso e as perdas fazem subir o custo mas a Origem não pode mudar; a mudança de rota mostra-se na Topologia 3.
@@ -149,7 +149,7 @@ Sem janela: acrescentar `--sem-gui`.
 cd /volume/ESR-TP2/Projeto && python3 tools/arvore.py --core --watch 2
 ```
 
-Este terminal mostra, de 2 em 2 s, a árvore de cada servidor (Origem, custo e alternativas de cada nó) e os fluxos que estão a passar, juntando o que cada nó sabe. Deixá-lo à vista durante os passos 6, 11, 12 e 13 para se ver a árvore mudar. Para gerar figuras: `--dot arvore` (precisa de `apt install -y graphviz` no contentor).
+Este terminal mostra, de 2 em 2 s (só lê o estado local de cada nó com `vcmd`; não gera tráfego na rede), a árvore de cada servidor (Origem, custo e alternativas de cada nó) e os fluxos que estão a passar, juntando o que cada nó sabe. Deixá-lo à vista durante os passos 6, 11, 12 e 13 para se ver a árvore mudar. Para gerar figuras: `--dot arvore` (precisa de `apt install -y graphviz` no contentor).
 
 | # | Fazer | O que se vê | O que dizer |
 |---|---|---|---|
@@ -162,12 +162,13 @@ Este terminal mostra, de 2 em 2 s, a árvore de cada servidor (Origem, custo e a
 | 7 | Voltar a arrancar esse relay | `Vizinho ... ligado` | "Volta a entrar sozinho." |
 | 8 | **Ctrl+C no PC2 (O3)**, o onode do cliente do PC3 | cliente: `o onode não responde`, fps=0 | "O cliente só conhece este onode: se ele morre, o cliente fica sem vídeo..." |
 | 9 | Voltar a arrancar o O3 | cliente: `a enviar`, vídeo volta | "...e quando volta, o vídeo volta sozinho (o cliente continua a pedir de 1 em 1 s)." |
-| 10 | `vizinhos` no PC2 (O3) | coluna "Custo da ligação" = 1 + 2×A + 3×P + 1×C | "A métrica pondera salto, atraso (ALIVE), perdas (medidas com o próprio vídeo) e carga; não usa pacotes extra." |
-| 11 | Duplo clique numa ligação usada (ex.: R1–R3) → **Delay 40000 µs** | ao fim de ~5 s a Origem muda em `rotas`; em `vizinhos` o custo sobe para 1 + 2×8 | "O atraso pesa 2 por cada 10 ms de RTT (40 ms em cada sentido = RTT de 80 ms)." |
-| 12 | Na mesma ligação: Delay 0 e **Loss 20%** | ao fim de ~10 s, em `vizinhos`, Perdas ≈ 20% e o custo sobe 3×4; a Origem muda | "As perdas medem-se pelas lacunas no nº de sequência de cada ligação." |
-| 13 | **Ctrl+C no Server (S1)** | o cliente do PC3 (filmeB, via O3) passa a receber do S2 (`trocas` nas STATS); o cliente do PC6 (filmeB, via O5) já recebia do S2 e nem dá por isso | "O filmeB está nos dois servidores; cada onode escolhe o mais perto e, se esse morre, muda para o outro." |
+| 10 | `vizinhos` no PC9 (O4) | coluna "Custo da ligação" = 1 + 2×A + 3×P + 1×C | "A métrica pondera salto, atraso (RTT local, pelo ALIVE), perdas (medidas com o próprio vídeo) e carga; não usa pacotes extra." |
+| 11 | Duplo clique na ligação **PC4–s5** (o acesso do O2) → **Delay 40000 µs** | ao fim de 1–2 heartbeats (10–20 s), em `vizinhos` no PC9 o custo da ligação ao O2 sobe para 1 + 2×8 = 17 e em `rotas` a Origem do O4 para o S1 passa de O2 para O3 | "O atraso pesa 2 por cada 10 ms de RTT." |
+| 12 | Na mesma ligação: Delay 0 e **Loss 20%** | ao fim de ~10 s, em `vizinhos` no PC9, Perdas ≈ 20% e o custo sobe 3×4; a Origem continua longe do O2 | "As perdas medem-se pelas lacunas no nº de sequência de cada ligação." |
+| 13 | **Ctrl+C no Server (S1)** | o cliente do PC3 (filmeB, via O3) passa a receber do S2 (nas STATS muda a `fonte`, o SSRC, e `trocas` sobe; o cliente não sabe qual é o servidor); o cliente do PC6 (filmeB, via O5) já recebia do S2 e nem dá por isso | "O filmeB está nos dois servidores; cada onode escolhe o mais perto e, se esse morre, muda para o outro." |
 | 14 | `stop` num cliente | `poda` nos terminais acima; em `rotas`, `inativa` | "Sem clientes não há tráfego." |
 | 15 | (opcional) Wireshark num relay, filtro `udp.port==6001` | 1 fluxo a entrar, N a sair | prova de que não há marosca |
+| 16 | Wireshark no PC1 (O1), filtro `ip.addr==10.0.18.21 && ip.addr==10.0.19.21` (ligação O1–O3, sem fluxo) | só `ALIVE`/`ALIVE_RESP` e `ANUNCIO`, a cada 10 s; nenhum pacote UDP 6001 | "Onde não há fluxo só passa o heartbeat previsto; tudo o resto é por eventos." |
 
 ---
 

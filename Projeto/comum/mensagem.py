@@ -22,6 +22,9 @@ class Mensagem:
     ATIVAR = "ATIVAR"            # "envia-me o fluxo (servidor, stream)"
     DESATIVAR = "DESATIVAR"      # "já não preciso do fluxo" (poda)
     PING = "PING"                # teste do caminho (Etapa 3)
+    PEDIDO_SEQ = "PEDIDO_SEQ"    # "fiquei sem rota viável: servidor, anuncia-te já" (só em falhas)
+    ENDANGERED = "ENDANGERED"    # "só me resta o teu caminho: qual é o teu próximo salto?"
+    ENDANGERED_RESP = "ENDANGERED_RESP"  # resposta: o IP da Origem de quem responde (só isso)
     # Cliente <-> o seu onode (UDP)
     PEDIR = "PEDIR"              # cliente -> onode, de 1 em 1 s: "quero a stream X"
     PEDIR_RESP = "PEDIR_RESP"    # onode -> cliente: estado do pedido

@@ -4,8 +4,9 @@
     S1 — O4 —┬— O2 —┬— O1 — C1
              └— O3 —┘    └— O5   (folha; só arrancada no F3)
 
-Regra: só se abre uma ligação de recurso quando um nó fica sem caminho para nenhum
-servidor porque morreram onodes que lhe levavam a rota (nunca por um servidor morto).
+Regra: quando, num fluxo ativo, um nó fica com UM só vizinho com caminho (O2
+morre), pede-lhe o próximo salto (ENDANGERED -> só o IP do O4). Se esse vizinho
+também morrer e o nó ficar sem caminho, liga-se diretamente ao O4 (recurso).
 
 Uso:  python3 tests/test_falha_dupla.py [pasta_de_logs]
 """
@@ -19,6 +20,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from local_overlay import TODOS, LocalOverlay  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+from comum.config import HEARTBEAT as HB  # noqa: E402
 CFG = os.path.join(ROOT, "configs", "overlay_falha_dupla.json")
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "tests", "logs_falha_dupla")
 results = []
@@ -74,15 +77,18 @@ def f1_falha_simples():
     check("F1", depois not in (antes, None) and healthy(o, "C1"),
           f"{antes} morreu: O1 passou para {depois}; C1 continua a ver")
     check("F1", recursos(o, "O1") == 0, "nenhuma ligação de recurso aberta (havia alternativa)")
+    check("F1", "ENDANGERED" in o.log("O1") and "Reserva: se" in o.log("O1"),
+          "O1 ficou só com um caminho: enviou ENDANGERED e guardou o próximo salto como reserva")
     o.stop_all()
 
 
 def f2_falha_dupla():
-    print("F2: O2 e O3 morrem -> O1 fica isolado e abre uma ligação de recurso a O4; "
+    print("F2: O2 morre (ENDANGERED), depois O3 morre -> O1 liga-se ao O4 (recurso); "
           "O2 volta -> regressa ao O2 e a ligação de recurso fecha")
     o = setup("f2")
     check("F2", healthy(o, "C1"), f"antes: C1 a ver via {origem(o, 'O1')}")
     o.kill("O2")
+    time.sleep(3)
     o.kill("O3")
     time.sleep(10)
     s = o.last_stats("C1")
@@ -100,10 +106,10 @@ def f2_falha_dupla():
 
 
 def f3_folha_viva():
-    print("F3: O2 e O3 morrem e o O1 ainda tem um vizinho vivo sem rota (O5) "
-          "-> repara na mesma (está cortado de todos os servidores)")
+    print("F3: igual ao F2, mas o O1 tem mais um vizinho vivo sem rota (O5) -> repara na mesma")
     o = setup("f3", folha=True)
     o.kill("O2")
+    time.sleep(3)
     o.kill("O3")
     time.sleep(10)
     s = o.last_stats("C1")
@@ -124,9 +130,20 @@ def f4_servidor_morre():
     o.stop_all()
 
 
+def f5_simultanea():
+    print("F5 (limitação): O2 e O3 morrem AO MESMO TEMPO -> sem aviso prévio não há reserva nem reparação")
+    o = setup("f5")
+    o.freeze("O2")                        # congelados ao mesmo tempo: nenhum responde ao ENDANGERED
+    o.freeze("O3")
+    time.sleep(2 * HB + 10)
+    check("F5", recursos(o, "O1") == 0 and origem(o, "O1") in (None, "-"),
+          "O1 fica sem caminho e espera que O2 ou O3 volte (comportamento esperado)")
+    o.stop_all()
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
-    for t in (f1_falha_simples, f2_falha_dupla, f3_folha_viva, f4_servidor_morre):
+    for t in (f1_falha_simples, f2_falha_dupla, f3_folha_viva, f4_servidor_morre, f5_simultanea):
         try:
             t()
         except Exception as e:

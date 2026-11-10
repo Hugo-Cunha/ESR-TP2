@@ -31,7 +31,7 @@ Clientes: PC5 → O2, PC3 → O3, PC8 → O4, PC6 → O5.
 | O1 | **S1: 1**, O2: 2, O3: 2 | S1 | menor custo |
 | O2 | **S1: 1**, O1: 2, O3: 2 | S1 | menor custo |
 | O3 | **S1: 1**, O2: 2, O1: 2, O4: 3 | S1 | menor custo |
-| O4 | **O2: 2**, O3: 2, O5: 3, S2: 3 | O2 | empate O2/O3 (custo 2, 2 saltos) → menor IP (10.0.17.20 < 10.0.19.21) |
+| O4 | **O2: 2**, O3: 2, O5: 3, S2: 3 | O2 | empate O2/O3 (custo 2) → menor IP (10.0.17.20 < 10.0.19.21) |
 | O5 | **O2: 2**, S2: 3, O4: 3 | O2 | menor custo |
 | S2 | **O2: 2**, O5: 3, O4: 3 | O2 | menor custo |
 
@@ -55,7 +55,7 @@ A única outra árvore com o mesmo custo é a que pendura o O4 no O3 em vez do O
 | O4 | **S2: 1**, O5: 2, O2: 2, O3: 3 | S2 | menor custo |
 | O5 | **S2: 1**, O2: 2, O4: 2 | S2 | menor custo |
 | O1 | **O2: 2**, S1: 3, O3: 3 | O2 | menor custo |
-| O3 | **O2: 2**, O4: 2, S1: 3, O1: 3 | O2 | empate O2/O4 → menor IP (10.0.17.20 < 10.0.20.20) |
+| O3 | **O2: 2**, O4: 2, S1: 3, O1: 3 | O2 | empate O2/O4 (custo 2) → menor IP (10.0.17.20 < 10.0.20.20) |
 | S1 | **O2: 2**, O1: 3, O3: 3 | O2 | menor custo |
 
 **Árvore usada:**
@@ -102,22 +102,25 @@ O S1 envia **2 cópias** (O2 e O3) para 4 clientes. O O1 e o S2 não recebem nad
 
 ## 4. Como a árvore muda (monitorização)
 
-A árvore não é fixa: cada nó volta a escolher a Origem em cada anúncio (1 s). Três situações:
+A árvore não é fixa: cada nó volta a escolher a Origem sempre que chega um anúncio (a cada heartbeat, 10 s) e sempre que um vizinho cai ou volta. Três situações:
 
-**a) Atraso de 40 ms em cada sentido na ligação S1–O2** (RTT 80 ms → custo 1 + 2×8 = 17):
+**a) Atraso de 40 ms em cada sentido no acesso do O2** (ligação PC4–s5): todas as ligações do O2 passam a ter RTT 80 ms, ou seja, custo 1 + 2×8 = 17.
 
 | Nó | Antes | Depois | Porquê |
 |---|---|---|---|
-| O2 | S1 (1) | O1 (2) | via S1 custaria 17 |
-| O4 | O2 (2) | O3 (2) | via O2 passaria a custar 3 |
-| O5 | O2 (2) | O2 (3) | O2 continua a ser o melhor (empata com O4 e ganha pelo IP) |
-| S2 | O2 (2) | O2 (3) | idem |
+| O2 | S1 (1) | S1 (17) | todas as ligações do O2 custam 17; pelo S1 continua a ser o mais barato |
+| O4 | O2 (2) | O3 (2) | via O2 custaria 1 + 17 = 18 |
+| O5 | O2 (2) | O4 (3) | via O2 custaria 18 |
+| S2 | O2 (2) | O4 (3) | idem |
 
 ```
-S1 ─┬─ O1 ── O2 ─┬─ O5
-    │            └─ S2
-    └─ O3 ── O4
+S1 ─┬─ O1
+    ├─ O2
+    └─ O3 ── O4 ─┬─ O5
+                 └─ S2
 ```
+
+O vídeo foge do O2: só o cliente do próprio O2 continua a recebê-lo por ele.
 
 **b) O O2 morre** (árvore do S1):
 

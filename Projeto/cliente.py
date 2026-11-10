@@ -2,7 +2,9 @@
 # Cliente de streaming. NÃO é um nó do overlay: só conhece o IP do seu onode.
 #
 #   - de 1 em 1 s envia PEDIR {stream} ao onode (UDP 6003);
-#   - recebe os pacotes de vídeo na porta UDP 6001 e mostra-os;
+#   - recebe os pacotes de vídeo na porta UDP 6001 e mostra-os (só pacotes RTP:
+#     o onode retira o cabeçalho do overlay, por isso o cliente não sabe de que
+#     servidor vem o vídeo nem por que caminho);
 #   - se o onode morrer, deixa de receber vídeo mas continua a pedir; quando o
 #     onode voltar, o vídeo volta sozinho.
 #
@@ -17,7 +19,7 @@ import sys
 import threading
 import time
 
-from comum import config, log as log_mod, pacote_dados
+from comum import config, log as log_mod
 from comum.estatisticas import Estatisticas
 from comum.log import log
 from comum.mensagem import Mensagem
@@ -30,7 +32,6 @@ class Cliente:
         self.stream = stream                  # None = parado
         self.estado = None                    # última resposta do onode
         self.stats = Estatisticas()
-        self.servidor = None
         self.ultima_frame = None              # lida pela janela
         self.a_correr = True
         self.sock_dados = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -79,17 +80,12 @@ class Cliente:
 
     def svc_receber(self):
         while self.a_correr:
-            pacote, _ = self.sock_dados.recvfrom(65535)
-            lido = pacote_dados.ler(pacote)
-            if lido is None or self.stream is None:
-                continue
-            servidor, stream, saltos, _, t_envio, rtp_bytes = lido
-            if stream != self.stream:
+            rtp_bytes, _ = self.sock_dados.recvfrom(65535)
+            if self.stream is None or len(rtp_bytes) <= 12:
                 continue
             rtp = RtpPacket()
             rtp.decode(rtp_bytes)
-            self.servidor = servidor
-            if self.stats.registar(rtp, saltos, t_envio):
+            if self.stats.registar(rtp):
                 self.ultima_frame = rtp.getPayload()
 
     def svc_estatisticas(self):
@@ -97,7 +93,7 @@ class Cliente:
         while self.a_correr:
             time.sleep(2)
             if self.stream:
-                log(f"STATS stream={self.stream} servidor={self.servidor} {self.stats.resumo()}")
+                log(f"STATS stream={self.stream} {self.stats.resumo()}")
 
 
 def consola(cliente):

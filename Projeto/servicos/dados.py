@@ -20,6 +20,13 @@ def abrir_socket_dados(db):
     db.sock_dados.bind((db.bind_ip, config.DATA_PORT))
 
 
+def enviar_a_clientes(db, rtp_bytes, clientes):
+    """Aos clientes vai SÓ o pacote RTP: o cabeçalho do overlay (IP do servidor,
+    saltos, ...) fica no overlay. O cliente não fica a saber de onde vem o vídeo."""
+    for ip in clientes:
+        db.sock_dados.sendto(rtp_bytes, (ip, config.DATA_PORT))
+
+
 def enviar_dados(db, pacote, ip, mais_um_salto):
     """Envia uma cópia do pacote a um vizinho (ou cliente), com o nº de sequência
     dessa ligação (é com ele que o vizinho mede as perdas)."""
@@ -49,8 +56,9 @@ def svc_emitir_stream(db, stream, ficheiro):
         frame = video.nextFrame()
         with db.lock:
             fluxo = db.fluxos.get((db.meu_ip, stream))
-            destinos = list(fluxo.destinos) + list(fluxo.clientes) if fluxo else []
-        if destinos:
+            destinos = list(fluxo.destinos) if fluxo else []
+            clientes = list(fluxo.clientes) if fluxo else []
+        if destinos or clientes:
             seq = (seq + 1) % 65536
             rtp = RtpPacket()
             rtp.encode(version=2, padding=0, extension=0, cc=0, seqnum=seq, marker=0, pt=PT_JPEG,
@@ -58,6 +66,7 @@ def svc_emitir_stream(db, stream, ficheiro):
             pacote = pacote_dados.criar(db.meu_ip, stream, 0, time.time(), rtp.getPacket())
             for ip in destinos:
                 enviar_dados(db, pacote, ip, mais_um_salto=False)
+            enviar_a_clientes(db, rtp.getPacket(), clientes)
         time.sleep(1 / config.FPS)
 
 
@@ -70,7 +79,7 @@ def svc_receber_dados(db):
         lido = pacote_dados.ler(pacote)
         if lido is None:
             continue
-        servidor, stream, saltos, seq_ligacao, t_envio, _ = lido
+        servidor, stream, saltos, seq_ligacao, t_envio, rtp_bytes = lido
         with db.lock:
             v = db.vizinhos.get(ip_origem)
             if v is not None:                 # medição passiva das perdas desta ligação
@@ -80,11 +89,12 @@ def svc_receber_dados(db):
             # só aceitamos o pacote se vier da nossa Origem para esse servidor
             if rota is None or fluxo is None or rota.origem != ip_origem:
                 continue
-            destinos = list(fluxo.destinos) + list(fluxo.clientes)
+            destinos, clientes = list(fluxo.destinos), list(fluxo.clientes)
         # uma cópia para cada destino e para cada cliente ligado a este nó
-        # (é aqui que se "replica" na árvore)
+        # (é aqui que se "replica" na árvore); aos clientes só vai o RTP
         for ip in destinos:
             enviar_dados(db, pacote, ip, mais_um_salto=True)
+        enviar_a_clientes(db, rtp_bytes, clientes)
 
 
 ##################################################################################

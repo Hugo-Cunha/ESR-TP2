@@ -19,6 +19,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from local_overlay import TODOS, LocalOverlay  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+from comum.config import HEARTBEAT as HB  # noqa: E402  (os tempos de espera escalam com ele)
 CFG = os.path.join(ROOT, "configs", "overlay_topo3.json")
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "tests", "logs")
 ONODE_DE = {"C1": "O2", "C2": "O3", "C3": "O4", "C4": "O5"}
@@ -49,8 +51,15 @@ def client(o, name, stream):
     o.start_cliente(name, ONODE_DE[name], stream)
 
 
-def nome_servidor(o, ip):
-    return next((n for n, i in o.ip.items() if i == ip), ip)
+def nome_servidor(o, fonte):
+    """O cliente só vê o SSRC do RTP (CRC32 de "IP do servidor/stream"). O teste
+    conhece a configuração e traduz o SSRC no nome do servidor."""
+    import zlib
+    for n, ip in o.ip.items():
+        for st in ("filmeA", "filmeB", "filmeC"):
+            if f"{zlib.crc32(f'{ip}/{st}'.encode()):08x}" == fonte:
+                return n
+    return fonte
 
 
 def healthy(o, name, min_fps=15):
@@ -80,7 +89,7 @@ def t1_basico():
         s = o.last_stats(c)
         check("T1", s and fnum(s["fps"]) >= 18 and s["perdas"] == "0",
               f"{c} (onode {ONODE_DE[c]}) a ver {s and s['stream']} do servidor "
-              f"{s and nome_servidor(o, s['servidor'])}: fps={s and s['fps']} perdas={s and s['perdas']}")
+              f"{s and nome_servidor(o, s['fonte'])}: fps={s and s['fps']} perdas={s and s['perdas']}")
     o.stop_all()
 
 
@@ -99,7 +108,7 @@ def t2_arvore():
     o.stop_all()
 
 
-def _falha_de_relay(teste, como):
+def _falha_de_relay(teste, como, espera=8):
     o = setup(teste.lower())
     client(o, "C3", "filmeA")             # C3 -> O4 -> (O2 ou O3) -> S1
     time.sleep(7)
@@ -111,7 +120,7 @@ def _falha_de_relay(teste, como):
         o.kill(relay, graceful=True)
     else:
         o.freeze(relay)
-    time.sleep(8)
+    time.sleep(espera)
     novo = origem(o, "O4", "S1/filmeA")
     s = o.last_stats("C3")
     return o, relay, novo, s
@@ -134,8 +143,8 @@ def t4_saida_ordeira():
 
 
 def t4b_falha_silenciosa():
-    print("T4b: nó intermédio congelado (SIGSTOP) -> deteção pelo timeout de 3,5 s")
-    o, relay, novo, s = _falha_de_relay("T4b", "congelar")
+    print(f"T4b: nó intermédio congelado (SIGSTOP) -> deteção pelo timeout (2 heartbeats + 1 s = {2 * HB + 1:.0f} s)")
+    o, relay, novo, s = _falha_de_relay("T4b", "congelar", espera=2 * HB + 6)
     check("T4b", healthy(o, "C3") and novo not in (relay, None),
           f"O4 passou a receber via {novo}; maior falha no C3 {s['maior_falha']}")
     o.stop_all()
@@ -161,29 +170,29 @@ def t5_onode_do_cliente():
 
 
 def t6_metrica_atraso():
-    print("T6: métrica de atraso (40 ms numa ligação, alterado em execução)")
+    print("T6: métrica com atraso (40 ms numa ligação do O4, alterado em execução)")
     o = setup("t6")
-    client(o, "C3", "filmeA")             # O4 chega ao S1 por O2 ou O3 (2 saltos cada)
+    client(o, "C3", "filmeA")             # O4 chega ao S1 por O2 ou O3 (custo 2 cada)
     time.sleep(7)
     a = origem(o, "O4", "S1/filmeA")
     b = "O3" if a == "O2" else "O2"
 
-    def delay(x, ms):
-        o.ottctl("S1", f"delay {o.ip[x]} {ms}")
-        o.ottctl(x, f"delay {o.ip['S1']} {ms}")
+    def delay(x, ms):                     # atraso nos dois sentidos da ligação O4-x
+        o.ottctl("O4", f"delay {o.ip[x]} {ms}")
+        o.ottctl(x, f"delay {o.ip['O4']} {ms}")
 
     delay(a, 40)
-    time.sleep(8)
+    time.sleep(HB + 6)                    # uma medição de RTT (uma por heartbeat)
     p1 = origem(o, "O4", "S1/filmeA")
     check("T6", p1 == b and healthy(o, "C3"),
-          f"ligação S1-{a} passa a 40 ms: O4 troca a Origem {a} -> {p1} (mesmo nº de saltos, menos atraso)")
-    with open(os.path.join(OUT, "t6", "tabela_O4.txt"), "w") as f:
-        f.write(o.ottctl("O4", "rotas"))
+          f"ligação O4-{a} passa a 40 ms (custo 1 + 2×8): O4 troca a Origem {a} -> {p1}")
+    with open(os.path.join(OUT, "t6", "vizinhos_O4.txt"), "w") as f:
+        f.write(o.ottctl("O4", "vizinhos"))
     delay(a, 0)
     delay(b, 40)
-    time.sleep(8)
+    time.sleep(2 * HB + 8)                # 2 medições: o RTT de O4-a tem de voltar a 0
     p2 = origem(o, "O4", "S1/filmeA")
-    check("T6", p2 == a and healthy(o, "C3"), f"o atraso passa para S1-{b}: O4 volta à Origem {p2}")
+    check("T6", p2 == a and healthy(o, "C3"), f"o atraso passa para O4-{b}: O4 volta à Origem {p2}")
     o.stop_all()
 
 
@@ -194,14 +203,14 @@ def t7_escolha_servidor():
     client(o, "C4", "filmeB")             # O5 está a 1 salto do S2 e a 2 do S1
     time.sleep(8)
     a, b = o.last_stats("C2"), o.last_stats("C4")
-    sa, sb = nome_servidor(o, a["servidor"]), nome_servidor(o, b["servidor"])
+    sa, sb = nome_servidor(o, a["fonte"]), nome_servidor(o, b["fonte"])
     check("T7", sa == "S1" and sb == "S2",
           f"cada onode escolhe o melhor servidor: C2 (via O3) <- {sa}, C4 (via O5) <- {sb}")
     o.kill("S1")
     time.sleep(9)
     a = o.last_stats("C2")
-    check("T7", nome_servidor(o, a["servidor"]) == "S2" and healthy(o, "C2"),
-          f"S1 caiu: C2 passou para {nome_servidor(o, a['servidor'])} (trocas={a['trocas']}, "
+    check("T7", nome_servidor(o, a["fonte"]) == "S2" and healthy(o, "C2"),
+          f"S1 caiu: C2 passou para {nome_servidor(o, a['fonte'])} (trocas={a['trocas']}, "
           f"maior falha {a['maior_falha']})")
     o.stop_all()
 
@@ -223,20 +232,38 @@ def t8_poda():
 
 
 def t9_metrica_perdas():
-    print("T9: métrica de perdas (30% de perdas numa ligação, medidas com o próprio vídeo)")
+    print("T9: métrica com perdas (30% numa ligação, medidas com o próprio vídeo)")
     o = setup("t9")
-    client(o, "C3", "filmeA")             # O4 chega ao S1 por O2 ou O3 (2 saltos cada)
+    client(o, "C3", "filmeA")
     time.sleep(7)
     a = origem(o, "O4", "S1/filmeA")
-    b = "O3" if a == "O2" else "O2"
-    o.ottctl("S1", f"perda {o.ip[a]} 30")  # o S1 descarta 30% do vídeo que envia ao relay a
-    time.sleep(13)                         # janela de medição (5 s) + anúncio seguinte
+    o.ottctl(a, f"perda {o.ip['O4']} 30")  # o relay descarta 30% do vídeo que envia ao O4
+    time.sleep(8)                         # uma janela de perdas (5 s) + margem
     p1 = origem(o, "O4", "S1/filmeA")
-    linha = next((l for l in o.ottctl(a, "vizinhos").splitlines() if l.startswith("S1 ")), "")
-    with open(os.path.join(OUT, "t9", "vizinhos_" + a + ".txt"), "w") as f:
-        f.write(o.ottctl(a, "vizinhos"))
-    check("T9", p1 == b and healthy(o, "C3"),
-          f"perdas em S1->{a}: O4 troca a Origem {a} -> {p1}; ligação vista por {a}: {' '.join(linha.split()[4:])}")
+    linha = next((l for l in o.ottctl("O4", "vizinhos").splitlines() if l.startswith(a + " ")), "")
+    check("T9", p1 not in (a, None) and healthy(o, "C3", min_fps=12),
+          f"perdas em {a}->O4: O4 troca a Origem {a} -> {p1}; ligação vista pelo O4: {' '.join(linha.split()[3:])}")
+    o.stop_all()
+
+
+def t12_silencio_sem_fluxo():
+    print("T12: numa ligação sem fluxo só passam os heartbeats (nada de vídeo, ATIVAR ou PING)")
+    import json
+    o = setup("t12")
+    client(o, "C3", "filmeA")             # O4 recebe por O2; a ligação O1-O3 não leva fluxo
+    time.sleep(8)
+
+    def contadores():
+        a = json.loads(o.ottctl("O1", "estado"))["controlo_enviado"]["O3"]
+        b = json.loads(o.ottctl("O3", "estado"))["controlo_enviado"]["O1"]
+        return a["msgs"] + b["msgs"], a["video"] + b["video"]
+    m0, v0 = contadores()
+    time.sleep(30)
+    m1, v1 = contadores()
+    esperado = 30 / HB * (4 + 2 * 2)      # ALIVE+RESP nos 2 sentidos + anúncio de 2 servidores nos 2 sentidos
+    check("T12", v1 - v0 == 0, f"ligação O1-O3 sem fluxo: {v1 - v0} pacotes de vídeo em 30 s")
+    check("T12", m1 - m0 <= esperado + 2,
+          f"ligação O1-O3 sem fluxo: {m1 - m0} mensagens de controlo em 30 s (máximo previsto {esperado:.0f})")
     o.stop_all()
 
 
@@ -247,14 +274,14 @@ def t10_route_poisoning():
     time.sleep(7)
     via = origem(o, "O5", "S1/filmeA")
     o.kill(via)
-    time.sleep(6)
+    time.sleep(6)                         # sem PEDIDO_SEQ teria de esperar pelo próximo heartbeat
     s = o.last_stats("C4")
     log_o5 = o.log("O5")
     envenenou = "custo infinito" in log_o5 or "retirou a rota" in log_o5
     nova = origem(o, "O5", "S1/filmeA")
     check("T10", healthy(o, "C4") and nova not in (via, None) and fnum(s["maior_falha"]) < 2000,
-          f"{via} morreu: o O5 recusou a rota velha (não viável), anunciou custo infinito={envenenou} "
-          f"e passou a receber via {nova}; maior falha no C4 {s['maior_falha']}")
+          f"{via} morreu: o O5 recusou a rota velha (não viável), anunciou custo infinito={envenenou}, "
+          f"pediu um anúncio novo ao servidor e passou a receber via {nova}; maior falha no C4 {s['maior_falha']}")
     o.stop_all()
 
 
@@ -282,7 +309,7 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     tests = [t1_basico, t2_arvore, t3_falha_relay, t4_saida_ordeira, t4b_falha_silenciosa,
              t5_onode_do_cliente, t6_metrica_atraso, t7_escolha_servidor, t8_poda,
-             t9_metrica_perdas, t10_route_poisoning, t11_volta_a_melhor_rota]
+             t9_metrica_perdas, t10_route_poisoning, t11_volta_a_melhor_rota, t12_silencio_sem_fluxo]
     only = os.environ.get("ONLY")
     for t in tests:
         if only and not t.__name__.startswith(only):

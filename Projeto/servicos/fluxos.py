@@ -7,8 +7,9 @@
 # Assim liga-se um ramo à árvore. Onde dois ramos se juntam passa só uma cópia.
 #
 # Quando um nó fica sem Destinos (e sem clientes), envia DESATIVAR à Origem
-# (poda). Os ATIVAR são repetidos de 2 em 2 s; um Destino que deixe de os enviar
-# é removido ao fim de 6,5 s (assim nada fica pendurado se um nó morrer).
+# (poda). Os ATIVAR são repetidos a cada HEARTBEAT, só nas ligações por onde passa
+# o fluxo; um Destino que deixe de os enviar é removido ao fim de 2 heartbeats + 1 s
+# (assim nada fica pendurado se um nó morrer).
 
 import time
 

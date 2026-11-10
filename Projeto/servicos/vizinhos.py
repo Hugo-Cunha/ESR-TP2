@@ -3,8 +3,10 @@
 #
 # Cada vizinho tem UMA ligação TCP persistente. Para não haver duas ligações
 # entre o mesmo par de nós, só o nó com o IP menor é que inicia a ligação.
-# O socket tem um timeout de VIZINHO_TIMEOUT: como os vizinhos trocam ALIVE a
-# cada segundo, se o recv() ficar 3,5 s sem receber nada, o vizinho morreu.
+# Uma saída (Ctrl+C, processo morto) deteta-se logo: chega ADEUS ou o TCP fecha.
+# Para um nó CONGELADO (a ligação não fecha) há o ALIVE, a cada HEARTBEAT: o
+# socket tem um timeout de VIZINHO_TIMEOUT (2 heartbeats + 1 s) e, se o recv()
+# ficar esse tempo sem receber nada, o vizinho é dado como morto.
 
 import ipaddress
 import socket
@@ -15,7 +17,7 @@ from comum import config
 from comum.log import log
 from comum.mensagem import LeitorMensagens, Mensagem
 from database import Vizinho
-from servicos import dados, fluxos, rotas
+from servicos import dados, fluxos, reparacao, rotas
 
 
 ##################################################################################
@@ -65,9 +67,12 @@ def _enviar_agora(db, ip, msg):
     if v is None or not v.ligado():
         return
     msg.origem = db.meu_ip
+    dados_msg = msg.serialize()
     try:
         with v.lock_envio:
-            v.sock.sendall(msg.serialize())
+            v.sock.sendall(dados_msg)
+        v.tx_msgs += 1                        # contadores (comando 'estado'): tráfego de controlo
+        v.tx_bytes += len(dados_msg)
     except OSError as e:
         vizinho_em_baixo(db, ip, v.sock, f"erro ao enviar ({e})")
 
@@ -95,10 +100,15 @@ def svc_aceitar_ligacoes(db):
 #* Serviço que liga aos vizinhos em falta (de 2 em 2 s)
 
 def svc_ligar_vizinhos(db):
+    """No arranque liga-se a TODOS os vizinhos (quem reinicia volta a entrar logo).
+    Depois, a cada HEARTBEAT, só o nó de IP menor tenta religar a um vizinho em
+    falta (assim não há tentativas duplicadas)."""
+    arranque = True
     while db.a_correr:
         for v in list(db.vizinhos.values()):
-            if not v.ligado() and not v.recurso and _sou_eu_a_ligar(db.meu_ip, v.ip):
+            if not v.ligado() and not v.recurso and (arranque or _sou_eu_a_ligar(db.meu_ip, v.ip)):
                 threading.Thread(target=_ligar, args=(db, v.ip), daemon=True).start()
+        arranque = False
         time.sleep(config.LIGAR_INTERVALO)
 
 
@@ -124,10 +134,8 @@ def _ligar(db, ip, recurso=False):
 
 
 def ola(db, recurso):
-    """OLA leva o nosso nome e a lista dos NOSSOS vizinhos (só um nível): é o que
-    permite a um vizinho reparar o overlay se nós e outro vizinho morrermos."""
-    meus = [{"ip": v.ip, "nome": v.nome} for v in db.vizinhos.values() if not v.recurso]
-    return Mensagem(Mensagem.OLA, db.meu_ip, {"nome": db.meu_nome, "vizinhos": meus, "recurso": recurso})
+    """OLA leva só o nosso nome (e se é uma ligação de recurso)."""
+    return Mensagem(Mensagem.OLA, db.meu_ip, {"nome": db.meu_nome, "recurso": recurso})
 
 
 def cumprimentar(db, sock, fui_eu_a_ligar, recurso=False):
@@ -159,11 +167,17 @@ def cumprimentar(db, sock, fui_eu_a_ligar, recurso=False):
         if v is None:                         # não veio do bootstrapper: é uma ligação de recurso
             v = db.vizinhos[ip] = Vizinho(ip, resposta.dados["nome"])
             v.recurso = recurso
-        if v.ligado():                        # ligação antiga (ex.: o vizinho reiniciou)
-            v.sock.close()
-        v.sock, v.ligado_desde, v.rtts = sock, time.time(), []
-        v.ja_ligado, v.livre_desde, v.levava_rota = True, None, False
-        db.vizinhos_de[ip] = resposta.dados.get("vizinhos", [])
+        # Ligações duplicadas (os dois nós ligaram-se ao mesmo tempo, no arranque):
+        # os dois lados ficam com a que foi iniciada pelo nó de IP menor.
+        pelo_menor = fui_eu_a_ligar == _sou_eu_a_ligar(db.meu_ip, ip)
+        if v.ligado():
+            if v.iniciada_pelo_menor and not pelo_menor:
+                sock.close()                  # já temos a ligação "certa"
+                return
+            v.sock.close()                    # ligação antiga (ex.: o vizinho reiniciou)
+        v.sock, v.ligado_desde, v.rtts, v.n_rtts = sock, time.time(), [], 0
+        v.iniciada_pelo_menor = pelo_menor
+        v.livre_desde = None
         log(f"Vizinho {v.nome} ({ip}) ligado" + (" (ligação de recurso)" if v.recurso else ""))
     threading.Thread(target=svc_ouvir_vizinho, args=(db, ip, sock, leitor), daemon=True).start()
     with db.lock:
@@ -198,6 +212,9 @@ def tratar_mensagem(db, ip, msg):
         Mensagem.ATIVAR: fluxos.handle_ativar,
         Mensagem.DESATIVAR: fluxos.handle_desativar,
         Mensagem.PING: dados.handle_ping,
+        Mensagem.PEDIDO_SEQ: rotas.handle_pedido_seq,
+        Mensagem.ENDANGERED: reparacao.handle_endangered,
+        Mensagem.ENDANGERED_RESP: reparacao.handle_endangered_resp,
     }
     handler = handlers.get(msg.tipo)
     if handler:
@@ -217,19 +234,17 @@ def vizinho_em_baixo(db, ip, sock, motivo):
         v.sock.close()
         v.sock = None
         log(f"Vizinho {v.nome} ({ip}) em baixo: {motivo}")
-        # (reparação) um onode intermédio que nos levava a rota? Um servidor morto não conta:
-        # ligar aos vizinhos dele não o traz de volta. (Um servidor tem rota para si próprio.)
-        v.levava_rota = ip not in db.rotas and any(r.origem == ip for r in db.rotas.values())
         rotas.esquecer_vizinho(db, ip)
         fluxos.esquecer_vizinho(db, ip)
         if v.recurso:                         # ligações de recurso são temporárias: esquecem-se
             del db.vizinhos[ip]
         fluxos.atualizar(db)
+        reparacao.vizinho_caiu(db, ip)        # ficámos com um só caminho? -> ENDANGERED
 
 
 ##################################################################################
-#* ALIVE: de 1 em 1 s cada nó envia ALIVE aos vizinhos, que respondem com ALIVE_RESP.
-#  Assim (1) as ligações nunca ficam caladas e (2) medimos o RTT de cada ligação.
+#* ALIVE: a cada HEARTBEAT cada nó envia ALIVE aos vizinhos, que respondem com
+#  ALIVE_RESP. Serve para (1) detetar nós congelados e (2) medir o RTT local.
 
 def svc_alive(db):
     while db.a_correr:
@@ -244,7 +259,9 @@ def handle_alive(db, ip, msg):
 def handle_alive_resp(db, ip, msg):
     rtt_ms = (time.time() - msg.dados["t"]) * 1000
     v = db.vizinhos[ip]
-    v.rtts = (v.rtts + [rtt_ms])[-3:]         # guarda as 3 últimas medições
+    v.n_rtts += 1
+    if v.n_rtts > 1:                          # a 1.ª medição sai inflacionada (arranque da ligação)
+        v.rtts = (v.rtts + [rtt_ms])[-2:]     # média das 2 últimas
 
 
 ##################################################################################
@@ -252,16 +269,16 @@ def handle_alive_resp(db, ip, msg):
 #
 #   custo = PESO_SALTO×1 + PESO_ATRASO×A + PESO_PERDAS×P + PESO_CARGA×C
 #
-#   A = RTT da ligação (média dos 3 últimos ALIVE) em degraus de 10 ms. Usa-se o
-#       RTT inteiro e não RTT/2: a ida e a volta não têm de demorar o mesmo.
+#   A = RTT local da ligação (média das 2 últimas medições do ALIVE) em degraus
+#       de 10 ms. Usa-se o RTT inteiro e não RTT/2: ida e volta podem diferir.
 #   P = perdas na ligação vizinho -> nós (medidas com o vídeo) em degraus de 5 %
 #   C = nº de fluxos de OUTROS servidores que já recebemos deste vizinho
 #   + PESO_RECURSO se for uma ligação de recurso (servicos/reparacao.py): assim
 #     só é usada quando não há outro caminho, e deixa de o ser quando ele volta.
 #
 # Os degraus fazem com que pequenas variações (ruído de medição) não alterem o
-# custo e, portanto, não façam as rotas oscilar. A carga só conta fluxos de
-# outros servidores: um fluxo não deve fugir da ligação por causa de si próprio.
+# custo e, portanto, não façam as rotas oscilar. O custo de uma rota é a soma
+# dos custos das ligações até ao servidor (vai acumulando nos anúncios).
 #
 # Exemplos (pesos 1, 2, 3, 1):
 #   ligação sem atraso, sem perdas, sem carga        -> 1         (= contar saltos)
@@ -269,11 +286,9 @@ def handle_alive_resp(db, ip, msg):
 #   ligação com 10 % de perdas                       -> 1 + 3×2 = 7
 #   ligação que já leva 2 fluxos de outro servidor   -> 1 + 1×2 = 3
 
-def componentes_custo(db, ip, servidor):
+def componentes_custo(db, ip, servidor=None):
     v = db.vizinhos[ip]
-    atraso = 0
-    if len(v.rtts) >= 3:                      # a 1.ª medição sai inflacionada no arranque
-        atraso = round(sum(v.rtts) / len(v.rtts) / config.DEGRAU_ATRASO_MS)
+    atraso = round(sum(v.rtts) / len(v.rtts) / config.DEGRAU_ATRASO_MS) if v.rtts else 0
     perdas = round(v.perdas_pct / config.DEGRAU_PERDAS_PCT)
     carga = fluxos.carga(db, ip, servidor)
     recurso = config.PESO_RECURSO if v.recurso else 0
@@ -282,9 +297,17 @@ def componentes_custo(db, ip, servidor):
     return {"atraso": atraso, "perdas": perdas, "carga": carga, "recurso": recurso, "total": total}
 
 
-def custo_ligacao(db, ip, servidor):
+def custo_ligacao(db, ip, servidor=None):
     return componentes_custo(db, ip, servidor)["total"]
 
+
+def rtt_texto(db, ip):
+    v = db.vizinhos.get(ip)
+    return f"{sum(v.rtts) / len(v.rtts):.1f} ms" if v and v.rtts else "-"
+
+
+##################################################################################
+#* Perdas por ligação (componente P da métrica), medidas com o próprio vídeo
 
 def registar_seq_recebido(v, seq):
     """Medição PASSIVA de perdas: cada pacote de vídeo traz um nº de sequência
