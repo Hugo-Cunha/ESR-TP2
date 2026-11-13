@@ -29,6 +29,7 @@ class Vizinho:
         self.rx_perdidos = 0
         self.janela_inicio = time.time()
         self.perdas_pct = 0.0           # perdas (%) da última janela completa
+        self.ultima_medicao = 0.0       # quando passou vídeo pela última vez (hold-down)
         # Reparação do overlay (servicos/reparacao.py)
         self.recurso = False            # ligação de recurso (não vem do bootstrapper; é temporária)
         self.recurso_meu = False        # fui eu que a abri (e sou eu que a fecho)

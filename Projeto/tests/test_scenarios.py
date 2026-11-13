@@ -243,6 +243,12 @@ def t9_metrica_perdas():
     linha = next((l for l in o.ottctl("O4", "vizinhos").splitlines() if l.startswith(a + " ")), "")
     check("T9", p1 not in (a, None) and healthy(o, "C3", min_fps=12),
           f"perdas em {a}->O4: O4 troca a Origem {a} -> {p1}; ligação vista pelo O4: {' '.join(linha.split()[3:])}")
+    # hold-down: sem vídeo pela ligação má, a perda fica congelada; o O4 não volta a experimentá-la logo
+    trocas = o.log("O4").count("Rota para S1: Origem")
+    time.sleep(20)
+    novas = o.log("O4").count("Rota para S1: Origem") - trocas
+    check("T9", novas == 0 and origem(o, "O4", "S1/filmeA") == p1,
+          f"hold-down: em 20 s o O4 não volta a {a} ({novas} trocas de Origem)")
     o.stop_all()
 
 

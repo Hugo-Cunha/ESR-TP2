@@ -324,17 +324,22 @@ def registar_seq_recebido(v, seq):
 
 def fechar_janela_perdas(v):
     """De JANELA_PERDAS em JANELA_PERDAS segundos calcula a percentagem de perdas.
-    Se não passou vídeo, não há medição: o valor antigo vai sendo esquecido aos
-    poucos (×0,8 por janela), para a ligação voltar a ser experimentada."""
-    if time.time() - v.janela_inicio < config.JANELA_PERDAS:
+    Se não passou vídeo, não há medição. HOLD-DOWN (como no RIP/EIGRP): o último
+    valor medido fica congelado durante PERDAS_HOLD_DOWN segundos e só depois vai
+    sendo esquecido aos poucos (×0,8 por janela), para a ligação voltar a ser
+    experimentada. Sem isto, fugir de uma ligação com perdas e voltar a ela
+    alternava a cada ~30 s (e o cliente apanhava as perdas em cada regresso)."""
+    agora = time.time()
+    if agora - v.janela_inicio < config.JANELA_PERDAS:
         return
     total = v.rx_recebidos + v.rx_perdidos
     if total > 0:
         v.perdas_pct = 100.0 * v.rx_perdidos / total
-    else:
+        v.ultima_medicao = agora
+    elif agora - v.ultima_medicao >= config.PERDAS_HOLD_DOWN:
         v.perdas_pct = v.perdas_pct * 0.8 if v.perdas_pct > 0.5 else 0.0
     v.rx_recebidos = v.rx_perdidos = 0
-    v.janela_inicio = time.time()
+    v.janela_inicio = agora
 
 
 def handle_adeus(db, ip, msg):

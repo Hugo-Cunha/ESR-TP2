@@ -40,6 +40,8 @@ DEGRAU_ATRASO_MS = 10   # A = RTT local da ligação / 10 ms (arredondado); usa-
                         # porque a ida e a volta podem demorar tempos diferentes
 DEGRAU_PERDAS_PCT = 5   # P = perdas (%) / 5 (arredondado)
 JANELA_PERDAS = 5.0     # janela de medição das perdas (s)
+PERDAS_HOLD_DOWN = 3 * HEARTBEAT  # sem vídeo, a última perda medida fica congelada este tempo
+                        # antes de começar a decair (evita voltar a experimentar logo a ligação má)
 
 # Reparação do overlay em falhas duplas (servicos/reparacao.py)
 REPARAR_ESPERA = 2.0                # sem caminho durante este tempo -> ligação de recurso
