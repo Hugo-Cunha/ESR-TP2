@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎬 OTT Overlay Streaming
+# OTT Overlay Streaming
 
 **Serviço de streaming de vídeo sobre uma rede *overlay* aplicacional, com árvores de distribuição por servidor e encaminhamento adaptativo**
 
@@ -16,7 +16,7 @@
 
 ---
 
-## 📖 Sobre o projeto
+## Sobre o projeto
 
 Um serviço *Over-the-Top* em que vários **servidores** transmitem vídeo a vários **clientes** através de uma rede de **onodes** (nós do *overlay*) emulada no [CORE](https://github.com/coreemu/core).
 
@@ -24,8 +24,8 @@ Cada onode conhece **apenas os seus vizinhos**. Para cada servidor guarda só po
 
 ```mermaid
 graph TB
-    S1([🎥 S1<br/>filmeA · filmeB])
-    S2([🎥 S2<br/>filmeB · filmeC])
+    S1([S1<br/>filmeA · filmeB])
+    S2([S2<br/>filmeB · filmeC])
     S1 --- O1 & O2 & O3
     S2 --- O2 & O4 & O5
     O1 --- O2
@@ -35,10 +35,10 @@ graph TB
     O2 --- O5
     O3 --- O4
     O4 --- O5
-    O2 -.- C1[💻 PC5]
-    O3 -.- C2[💻 PC3]
-    O4 -.- C3[💻 PC8]
-    O5 -.- C4[💻 PC6]
+    O2 -.- C1[PC5]
+    O3 -.- C2[PC3]
+    O4 -.- C3[PC8]
+    O5 -.- C4[PC6]
     classDef srv fill:#1f6feb,color:#fff,stroke:#1f6feb
     classDef cli fill:#2ea44f,color:#fff,stroke:#2ea44f
     class S1,S2 srv
@@ -134,7 +134,7 @@ Cobrem: árvore partilhada, falha abrupta, saída ordeira e nó congelado, mudan
     └── videos/                filmeA, filmeB, filmeC (MJPEG)
 ```
 
-## 📚 Documentação
+## Documentação
 
 | Documento | Conteúdo |
 |---|---|
@@ -143,7 +143,7 @@ Cobrem: árvore partilhada, falha abrupta, saída ordeira e nó congelado, mudan
 | [`Projeto/ARVORES_TOPO3.md`](Projeto/ARVORES_TOPO3.md) | Árvores possíveis e escolhidas na Topologia 3 |
 | [`Projeto/message_types.md`](Projeto/message_types.md) | Formato de todas as mensagens |
 
-## 👥 Autores
+## Autores
 
 <div align="center">
 
@@ -153,6 +153,6 @@ Cobrem: árvore partilhada, falha abrupta, saída ordeira e nó congelado, mudan
 | 👤 | João Tomás | PG63985 |
 | 👤 | Hugo Cunha | PG63972 |
 
-**Universidade do Minho** · Engenharia de Serviços em Rede (Perfil A) · Turno PL3 · 2026/27
+**Universidade do Minho** · Mestrado em Engenharia Informatica · Engenharia de Serviços em Rede · Turno PL3 · 2026/27
 
 </div>
