@@ -46,19 +46,19 @@ graph TB
 ```
 <sub>Topologia 3: 2 servidores, 5 onodes e 4 clientes.</sub>
 
-## ✨ Funcionalidades
+## Funcionalidades
 
 | | |
 |---|---|
-| 🌳 **Árvores por servidor** | Construídas a pedido com `ATIVAR`/`DESATIVAR` (como no PIM-SM), com RPF e poda quando não há clientes |
-| 📏 **Métrica adaptativa** | Custo = 1×salto + 2×atraso (RTT local) + 3×perdas (medidas com o próprio vídeo) + 1×carga |
-| 🔁 **Vetor de distâncias** | Números de sequência por servidor, *split horizon*, condição de viabilidade (Babel/EIGRP) e *route poisoning* |
-| 🛟 **Recuperação de falhas** | Mudança de Origem em ~50 ms quando um nó cai, e regresso à melhor rota quando ele volta |
-| 🧯 **Falhas duplas** *(extra)* | `ENDANGERED`: o nó em risco pergunta ao vizinho que lhe resta qual é o próximo salto e, se também esse cair, abre uma ligação de recurso |
-| 🔭 **Visualização ao vivo** *(extra)* | `tools/arvore.py` desenha as árvores de todos os servidores em tempo real |
-| 🤫 **Silêncio onde não há fluxo** | Numa ligação sem vídeo só passam os *heartbeats* (10 s); o cliente recebe apenas RTP |
+| **Árvores por servidor** | Construídas a pedido com `ATIVAR`/`DESATIVAR` (como no PIM-SM), com RPF e poda quando não há clientes |
+| **Métrica adaptativa** | Custo = 1×salto + 2×atraso (RTT local) + 3×perdas (medidas com o próprio vídeo) + 1×carga |
+| **Vetor de distâncias** | Números de sequência por servidor, *split horizon*, condição de viabilidade (Babel/EIGRP) e *route poisoning* |
+| **Recuperação de falhas** | Mudança de Origem em ~50 ms quando um nó cai, e regresso à melhor rota quando ele volta |
+| **Falhas duplas** *(extra)* | `ENDANGERED`: o nó em risco pergunta ao vizinho que lhe resta qual é o próximo salto e, se também esse cair, abre uma ligação de recurso |
+| **Visualização ao vivo** *(extra)* | `tools/arvore.py` desenha as árvores de todos os servidores em tempo real |
+| **Silêncio onde não há fluxo** | Numa ligação sem vídeo só passam os *heartbeats* (10 s); o cliente recebe apenas RTP |
 
-## 🏗️ Arquitetura
+## Arquitetura
 
 | Componente | Função | Transporte |
 |---|---|---|
@@ -70,7 +70,7 @@ graph TB
 
 O controlo usa TCP persistente por vizinho, com mensagens JSON (uma por linha). O vídeo vai em UDP: entre onodes num cabeçalho próprio com nº de sequência por ligação, e para o cliente em **RTP puro**. Os formatos estão em [`message_types.md`](Projeto/message_types.md).
 
-## 🚀 Como correr
+## Como correr
 
 Dentro do CORE, abre uma das topologias de [`Topologia/`](Topologia) e corre em cada PC:
 
@@ -106,7 +106,7 @@ Os comandos para cada PC das Topologias 1, 2 e 3 estão no guião [`DEMO.md`](Pr
 python3 tools/arvore.py --core --watch 2
 ```
 
-## 🧪 Testes
+## Testes
 
 Os testes correm toda a Topologia 3 numa só máquina, sem CORE (cada nó num IP `127.x`):
 
@@ -119,7 +119,7 @@ python3 tools/testar_heartbeat.py    # experiência que escolheu o heartbeat de 
 
 Cobrem: árvore partilhada, falha abrupta, saída ordeira e nó congelado, mudança por atraso e por perdas (com *hold-down*), *route poisoning*, regresso à melhor rota e silêncio numa ligação sem fluxo.
 
-## 📂 Estrutura
+## Estrutura
 
 ```
 ├── ESR-TP2-26-27.pdf          enunciado
