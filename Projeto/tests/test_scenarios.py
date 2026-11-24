@@ -242,9 +242,9 @@ def t9_metrica_perdas():
     check("T9", p1 not in (a, None) and healthy(o, "C3", min_fps=12),
           f"perdas em {a}->O4: O4 troca a Origem {a} -> {p1}; ligação vista pelo O4: {' '.join(linha.split()[3:])}")
     # hold-down: sem vídeo pela ligação má, a perda fica congelada; o O4 não volta a experimentá-la logo
-    trocas = o.log("O4").count("Rota para S1: Origem")
+    trocas = o.log("O4").count("Árvore S1: pai")
     time.sleep(20)
-    novas = o.log("O4").count("Rota para S1: Origem") - trocas
+    novas = o.log("O4").count("Árvore S1: pai") - trocas
     check("T9", novas == 0 and origem(o, "O4", "S1/filmeA") == p1,
           f"hold-down: em 20 s o O4 não volta a {a} ({novas} trocas de Origem)")
     o.stop_all()
@@ -281,7 +281,7 @@ def t10_route_poisoning():
     time.sleep(6)                         # sem PEDIDO_SEQ teria de esperar pelo próximo heartbeat
     s = o.last_stats("C4")
     log_o5 = o.log("O5")
-    envenenou = "custo infinito" in log_o5 or "retirou a rota" in log_o5
+    envenenou = "custo infinito" in log_o5 or "deixou de chegar" in log_o5
     nova = origem(o, "O5", "S1/filmeA")
     check("T10", healthy(o, "C4") and nova not in (via, None) and fnum(s["maior_falha"]) < 2000,
           f"{via} morreu: o O5 recusou a rota velha (não viável), anunciou custo infinito={envenenou}, "
@@ -309,11 +309,39 @@ def t11_volta_a_melhor_rota():
     o.stop_all()
 
 
+def t13_falha_catastrofica():
+    print("T13: falha catastrófica (morrem os dois caminhos do O4 para o S1) e regresso")
+    o = setup("t13")
+    client(o, "C3", "filmeA")             # O4 recebe do S1 pelo O2 (alternativa O3)
+    client(o, "C4", "filmeA")             # O5 também
+    time.sleep(8)
+    o.kill("O2")
+    time.sleep(4)
+    log_o4 = o.log("O4")
+    check("T13", "ENDANGERED" in log_o4 and "Reserva: se O3 cair, ligo-me a S1" in log_o4,
+          "O2 morreu: o O4 ficou só com o O3, pediu-lhe o próximo salto (ENDANGERED) e guardou o S1 como reserva")
+    o.kill("O3")
+    time.sleep(7)
+    s = o.last_stats("C3")
+    check("T13", "a abrir ligação de recurso" in o.log("O4") and origem(o, "O4", "S1/filmeA") == "S1"
+          and healthy(o, "C3") and healthy(o, "C4"),
+          f"O3 também morreu: o O4 abriu uma ligação de recurso ao S1 e os clientes do O4 e do O5 voltaram a ver "
+          f"(maior falha no C3 {s['maior_falha']})")
+    o.start("O2", "onode.py")
+    o.start("O3", "onode.py")
+    time.sleep(12)
+    check("T13", origem(o, "O4", "S1/filmeA") == "O2" and "já não é precisa" in o.log("O4")
+          and healthy(o, "C3") and healthy(o, "C4"),
+          "O2 e O3 voltaram: a árvore volta à original (O4 pelo O2) e a ligação de recurso fecha")
+    o.stop_all()
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     tests = [t1_basico, t2_arvore, t3_falha_relay, t4_saida_ordeira, t4b_falha_silenciosa,
              t5_onode_do_cliente, t6_metrica_atraso, t7_escolha_servidor, t8_poda,
-             t9_metrica_perdas, t10_route_poisoning, t11_volta_a_melhor_rota, t12_silencio_sem_fluxo]
+             t9_metrica_perdas, t10_route_poisoning, t11_volta_a_melhor_rota, t12_silencio_sem_fluxo,
+             t13_falha_catastrofica]
     only = os.environ.get("ONLY")
     for t in tests:
         if only and not t.__name__.startswith(only):
@@ -324,11 +352,11 @@ def main():
             check(t.__name__, False, f"exceção: {e!r}")
         for o in TODOS:                   # garante que não ficam processos pendurados
             o.stop_all()
-    if not only:                          # nenhum destes cenários isola um nó
+    if not only:                          # só o T13 deve abrir ligações de recurso
         import glob
         n = sum(open(f, errors="replace").read().count("a abrir ligação de recurso")
-                for f in glob.glob(os.path.join(OUT, "*", "*.log")))
-        check("Reparação", n == 0, f"nenhuma ligação de recurso aberta na Topologia 3 ({n})")
+                for f in glob.glob(os.path.join(OUT, "*", "*.log")) if os.sep + "t13" + os.sep not in f)
+        check("Reparação", n == 0, f"fora do T13, nenhuma ligação de recurso aberta na Topologia 3 ({n})")
     ok = sum(1 for r in results if r[1])
     print(f"\n{ok}/{len(results)} verificações passaram")
     with open(os.path.join(OUT, "resultados.md"), "w") as f:

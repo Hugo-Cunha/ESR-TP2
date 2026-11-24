@@ -28,7 +28,7 @@ def handle_ativar(db, ip, msg):
         return                                # pediram-nos uma stream que não temos
     fluxo = db.obter_fluxo(servidor, stream)
     if ip not in fluxo.destinos:
-        log(f"Fluxo {db.nome_fluxo(fluxo)}: novo destino {db.nome_de(ip)}")
+        log(f"{db.nome_fluxo(fluxo)}: novo filho {db.nome_de(ip)}")
     fluxo.destinos[ip] = time.time()
     atualizar(db)
 
@@ -36,7 +36,7 @@ def handle_ativar(db, ip, msg):
 def handle_desativar(db, ip, msg):
     fluxo = db.fluxos.get((msg.dados["servidor"], msg.dados["stream"]))
     if fluxo and fluxo.destinos.pop(ip, None) is not None:
-        log(f"Fluxo {db.nome_fluxo(fluxo)}: destino {db.nome_de(ip)} removido (poda)")
+        log(f"{db.nome_fluxo(fluxo)}: o filho {db.nome_de(ip)} saiu (poda)")
         atualizar(db)
 
 
@@ -52,22 +52,31 @@ def atualizar(db):
         fluxo = db.fluxos[chave]
         if fluxo.servidor == db.meu_ip:       # sou o servidor deste fluxo: não peço a ninguém
             if not fluxo.preciso():
+                log(f"{db.nome_fluxo(fluxo)}: INATIVO (sem filhos): deixo de enviar")
                 del db.fluxos[chave]
             continue
 
         rota = db.rotas.get(fluxo.servidor)
         origem = rota.origem if rota else None
         if fluxo.preciso() and fluxo.pedido_a != origem:
+            nome = db.nome_fluxo(fluxo)
             if fluxo.pedido_a:
                 _enviar(db, fluxo.pedido_a, Mensagem.DESATIVAR, fluxo)
+            antigo = fluxo.pedido_a or getattr(fluxo, "pai_que_caiu", None)
+            fluxo.pai_que_caiu = None
+            if origem and antigo:
+                log(f"{nome}: troca de pai {db.nome_de(antigo)} -> {db.nome_de(origem)}")
+            elif origem:
+                log(f"{nome}: ATIVO, pedido ao pai {db.nome_de(origem)}")
+            else:
+                log(f"{nome}: sem pai (não há caminho para o servidor)")
             if origem:
                 _enviar(db, origem, Mensagem.ATIVAR, fluxo)
-                log(f"Fluxo {db.nome_fluxo(fluxo)} pedido a {db.nome_de(origem)}")
             fluxo.pedido_a = origem
         elif not fluxo.preciso():
             if fluxo.pedido_a:
                 _enviar(db, fluxo.pedido_a, Mensagem.DESATIVAR, fluxo)
-                log(f"Fluxo {db.nome_fluxo(fluxo)} sem destinos: poda enviada a {db.nome_de(fluxo.pedido_a)}")
+                log(f"{db.nome_fluxo(fluxo)}: INATIVO (sem filhos): poda enviada ao pai {db.nome_de(fluxo.pedido_a)}")
             del db.fluxos[chave]
 
 
@@ -83,6 +92,7 @@ def esquecer_vizinho(db, ip):
         fluxo.destinos.pop(ip, None)
         if fluxo.pedido_a == ip:
             fluxo.pedido_a = None
+            fluxo.pai_que_caiu = ip           # só para o log dizer "troca de pai X -> Y"
 
 
 ##################################################################################
@@ -98,7 +108,7 @@ def svc_manter_fluxos(db):
                 for ip, instante in list(fluxo.destinos.items()):
                     if agora - instante > config.DESTINO_TIMEOUT:
                         del fluxo.destinos[ip]
-                        log(f"Fluxo {db.nome_fluxo(fluxo)}: destino {db.nome_de(ip)} expirou")
+                        log(f"{db.nome_fluxo(fluxo)}: o filho {db.nome_de(ip)} deixou de pedir (expirou)")
                 # refrescar o nosso pedido (soft state)
                 if fluxo.pedido_a and agora - fluxo.ultimo_ativar >= config.ATIVAR_INTERVALO:
                     _enviar(db, fluxo.pedido_a, Mensagem.ATIVAR, fluxo)
@@ -119,7 +129,7 @@ def escolher_servidores(db):
             nome = db.nome_de(servidor) if servidor else "nenhum"
             if servidor in db.rotas:
                 nome = db.rotas[servidor].nome_servidor
-            log(f"Cliente {ip}: '{cliente['stream']}' a partir do servidor {nome}")
+            log(f"Cliente {ip}: '{cliente['stream']}' vem do servidor {nome}")
             cliente["servidor"] = servidor
         if servidor:
             db.obter_fluxo(servidor, cliente["stream"]).clientes.add(ip)

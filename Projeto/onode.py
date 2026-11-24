@@ -5,7 +5,7 @@
 # Uso:  python3 onode.py <ip_bootstrapper>
 #
 # Comandos no terminal (ou a partir de outro terminal com: python3 ottctl.py <comando>):
-#     vizinhos | rotas | sair
+#     arvore | vizinhos | rotas | sair
 
 import argparse
 import socket
@@ -48,6 +48,7 @@ def comandos_base(db):
     return {
         "vizinhos": lambda args: db.tabela_vizinhos(),
         "rotas": lambda args: db.tabela_rotas(),
+        "arvore": lambda args: db.tabela_arvore(),
         "estado": lambda args: db.estado_json(),     # para tools/arvore.py
         "delay": lambda args: definir_atraso(db, args),
         "perda": lambda args: definir_perda(db, args),

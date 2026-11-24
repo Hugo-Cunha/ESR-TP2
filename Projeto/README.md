@@ -117,12 +117,14 @@ Resultados dos testes locais: falha de um onode intermédio → interrupção de
 
 Exemplo (acordado com o docente): `C — O1`, ligado a `O2` e `O3`, ambos ligados a `O4 — S`; o fluxo vai de `O4` para `O1`. `O1` e `O4` não são vizinhos no *overlay*, mas alcançam-se no *underlay*. Nenhum nó sabe mais do que os seus vizinhos enquanto não houver perigo:
 
-1. **Perigo.** Morre `O2`. `O1` continua a receber por `O3`, mas, para esse servidor, já só lhe resta **um** vizinho com caminho, e há um fluxo ativo. Só então `O1` envia `ENDANGERED` a `O3`.
+1. **Perigo.** Morre `O2`. `O1` continua a receber por `O3`, mas, para esse servidor, já só lhe resta **um** vizinho com caminho, e há um fluxo ativo. Só então `O1` envia `ENDANGERED` a `O3`. O perigo é avaliado quando um vizinho cai e também de 1 em 1 s, só localmente, porque também aparece quando os outros vizinhos retiram a rota (custo infinito) ou passam a receber deste nó (*split horizon*).
 2. `O3` responde `ENDANGERED_RESP` **apenas com o IP da sua Origem** (`O4`). `O1` guarda-o como reserva; não fica a saber mais nada.
 3. **Falha dupla.** Se `O3` também morrer e `O1` ficar 2 s sem caminho, abre uma **ligação de recurso** a `O4`. Funciona como uma ligação normal (anúncios, `ATIVAR`, vídeo), mas custa mais 10, para só ser usada quando não há outro caminho.
 4. Quando `O2` ou `O3` regressa, o caminho por ele volta a ser o mais barato e passa a ser usado; a ligação de recurso fica livre e, 2 s depois, `O1` fecha-a (`ADEUS`).
 
-Limitação: se `O2` e `O3` falharem ao mesmo tempo (antes da resposta ao `ENDANGERED`), `O1` não tem reserva e fica à espera que um deles volte. Código: `servicos/reparacao.py`; testes: `tests/test_falha_dupla.py` (topologia `configs/overlay_falha_dupla.json`).
+Na Topologia 3 isto acontece quando morrem o `O2` e o `O3`: o `O4` fica só com o `O3` (o `O5` e o `S2` passam a receber do S1 através dele), guarda a Origem do `O3` (o próprio S1) e, quando o `O3` morre, liga-se diretamente ao S1. O cliente do `O4` fica ~2 s sem vídeo (teste T13).
+
+Limitação: se os dois caminhos falharem ao mesmo tempo (antes da resposta ao `ENDANGERED`), o nó não tem reserva e fica à espera que um deles volte. Código: `servicos/reparacao.py`; testes: `tests/test_falha_dupla.py` (topologia `configs/overlay_falha_dupla.json`) e T13.
 
 ## 6. Execução
 
@@ -130,6 +132,7 @@ Comandos por PC e guião da demonstração: [`DEMO.md`](DEMO.md) (Topologias 1, 
 
 | Comando (terminal do onode, ou `python3 ottctl.py <comando>`) | Resultado |
 |---|---|
+| `arvore` | o essencial: para cada filme, ATIVO/inativo, o **pai** e os **filhos** |
 | `rotas` | tabela de rotas: Fluxo, Origem, Métrica, Saltos, Destinos, Estado, Alternativas |
 | `vizinhos` | vizinhos, RTT, perdas, carga e decomposição do custo de cada ligação |
 | `ping` (servidor) | PING pelos fluxos ativos (Etapa 3); cada nó regista o caminho percorrido |
@@ -164,6 +167,7 @@ ONLY=t9 python3 tests/test_scenarios.py    # apenas um teste
 | T10 | falha de um onode: a rota desatualizada é recusada (viabilidade), há *route poisoning*, `PEDIDO_SEQ` e recuperação |
 | T11 | a melhor rota morre → passa-se para a alternativa; quando volta → regressa-se à melhor rota |
 | T12 | numa ligação sem fluxo (O1–O3) passam 0 pacotes de vídeo e só o número previsto de mensagens de controlo |
+| T13 | morte catastrófica: O2 e O3 morrem; o O4 abre uma ligação de recurso ao S1 (~2 s sem vídeo); quando voltam, a árvore regressa à original e a ligação de recurso fecha |
 | Reparação | em nenhum destes cenários se abre uma ligação de recurso (há sempre alternativa) |
 
 `tests/test_falha_dupla.py` testa o extra da secção 5.1: F1, só um nó do meio morre → muda de rota, **não** abre ligação de recurso, mas envia `ENDANGERED` e guarda a reserva; F2, morre o outro → ligação de recurso, o vídeo volta; um deles volta → regressa à rota normal e a ligação de recurso fecha; F3, igual, com mais um vizinho vivo sem rota; F4, morre o servidor → **ninguém** abre ligação de recurso; F5 (limitação), os dois congelam ao mesmo tempo → sem reserva, não há reparação.

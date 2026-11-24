@@ -56,7 +56,7 @@ class LocalOverlay:
         if name not in self.ip:
             self.n_clientes += 1
             self.ip[name] = f"{self.base}{100 + self.n_clientes}"
-        self._spawn(name, ["cliente.py", self.ip[onode], stream, "--ip", self.ip[name], "--sem-gui"])
+        self._spawn(name, ["cliente.py", self.ip[onode], stream, "--ip", self.ip[name], "--sem-gui", "--stats"])
 
     def cmd(self, name, line):
         """Escreve uma linha no terminal (stdin) do processo."""

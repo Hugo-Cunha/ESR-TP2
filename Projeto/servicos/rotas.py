@@ -105,11 +105,11 @@ def handle_anuncio(db, ip_vizinho, msg):
         if d["custo"] is None:
             return                            # retirada de uma rota que nunca conhecemos
         rota = db.rotas[d["servidor"]] = Rota(d["servidor"], d["nome"])
-        log(f"Descoberto o servidor {d['nome']} com as streams {d['streams']}")
+        log(f"Servidor {d['nome']} descoberto: {', '.join(d['streams'])}")
 
     if d["custo"] is None:                    # route poisoning: o vizinho perdeu a rota
         if rota.candidatos.pop(ip_vizinho, None):
-            log(f"{db.nome_de(ip_vizinho)} retirou a rota para {rota.nome_servidor} (custo infinito)")
+            log(f"{db.nome_de(ip_vizinho)} deixou de chegar a {rota.nome_servidor} (custo infinito)")
             escolher_origem(db, rota)
             fluxos.atualizar(db)
         return
@@ -157,7 +157,7 @@ def escolher_origem(db, rota):
     viaveis = {ip: c for ip, c in rota.candidatos.items() if viavel(rota, c)}
     if not viaveis:
         if rota.origem is not None:
-            log(f"Rota para {rota.nome_servidor} perdida: a anunciar custo infinito aos vizinhos")
+            log(f"Árvore {rota.nome_servidor}: fiquei sem pai; aviso os vizinhos (custo infinito)")
             envenenar(db, rota)
         rota.origem, rota.custo, rota.saltos = None, None, None
         if rota.sem_caminho_desde is None:
@@ -170,8 +170,10 @@ def escolher_origem(db, rota):
     melhor_ip = min(viaveis, key=chave)
     melhor = viaveis[melhor_ip]
     if melhor_ip != rota.origem:
-        log(f"Rota para {rota.nome_servidor}: Origem {db.nome_de(rota.origem) if rota.origem else '-'}"
-            f" -> {db.nome_de(melhor_ip)} (custo {melhor.custo}, {melhor.saltos} saltos)")
+        if rota.origem:
+            log(f"Árvore {rota.nome_servidor}: pai {db.nome_de(rota.origem)} -> {db.nome_de(melhor_ip)} (custo {melhor.custo})")
+        else:
+            log(f"Árvore {rota.nome_servidor}: pai {db.nome_de(melhor_ip)} (custo {melhor.custo})")
     rota.origem, rota.custo, rota.saltos = melhor_ip, melhor.custo, melhor.saltos
 
     # 3) atualiza a distância de viabilidade

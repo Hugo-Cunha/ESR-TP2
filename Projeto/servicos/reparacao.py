@@ -45,8 +45,15 @@ def tem_fluxo_ativo(db, servidor):
 
 
 def vizinho_caiu(db, ip_morto):
-    """Chamado quando um vizinho cai. Para cada servidor de que temos um fluxo
-    ativo: se agora só nos resta UM vizinho com caminho, pedimos-lhe o próximo salto."""
+    """Chamado quando um vizinho cai."""
+    avaliar_perigo(db, f"{db.nome_de(ip_morto)} caiu")
+
+
+def avaliar_perigo(db, motivo="ficou só um caminho"):
+    """Para cada servidor de que temos um fluxo ativo: se só nos resta UM vizinho
+    com caminho, pedimos-lhe o próximo salto. Corre quando um vizinho cai e também
+    de 1 em 1 s (só localmente), porque o perigo também aparece quando os outros
+    vizinhos retiram a rota (custo infinito) ou passam a receber de nós."""
     for rota in db.rotas.values():
         if not tem_fluxo_ativo(db, rota.servidor):
             continue
@@ -57,7 +64,7 @@ def vizinho_caiu(db, ip_morto):
         if db.em_perigo.get(rota.servidor) == sobrevivente:
             continue                          # já perguntámos
         db.em_perigo[rota.servidor] = sobrevivente
-        log(f"Em perigo para {rota.nome_servidor}: {db.nome_de(ip_morto)} caiu e só resta "
+        log(f"Em perigo para {rota.nome_servidor} ({motivo}): só me resta "
             f"{db.nome_de(sobrevivente)}; a pedir-lhe o próximo salto (ENDANGERED)")
         vizinhos.enviar(db, sobrevivente, Mensagem(Mensagem.ENDANGERED, dados={"servidor": rota.servidor}))
 
@@ -88,6 +95,7 @@ def svc_reparar_overlay(db):
     while db.a_correr:
         time.sleep(1)
         with db.lock:
+            avaliar_perigo(db)
             verificar_reservas(db)
             fechar_recursos_livres(db)
 

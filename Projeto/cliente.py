@@ -27,8 +27,9 @@ from comum.RtpPacket import RtpPacket
 
 
 class Cliente:
-    def __init__(self, onode, stream, ip="0.0.0.0"):
+    def __init__(self, onode, stream, ip="0.0.0.0", stats=False):
         self.onode = onode
+        self.mostrar_stats = stats            # --stats: linha de estatísticas de 2 em 2 s (testes)
         self.stream = stream                  # None = parado
         self.estado = None                    # última resposta do onode
         self.stats = Estatisticas()
@@ -89,11 +90,33 @@ class Cliente:
                 self.ultima_frame = rtp.getPayload()
 
     def svc_estatisticas(self):
-        """De 2 em 2 s escreve no terminal como está a correr a receção."""
+        """No terminal só aparecem EVENTOS: começou a receber, ficou sem vídeo, o vídeo
+        voltou, a fonte mudou. Com --stats (usado pelos testes) escreve também uma linha
+        de estatísticas de 2 em 2 s."""
+        a_receber, ssrc, ultimo_stats, stream, parado_desde = False, None, 0.0, None, None
         while self.a_correr:
-            time.sleep(2)
-            if self.stream:
-                log(f"STATS stream={self.stream} {self.stats.resumo()}")
+            time.sleep(0.25)
+            agora = time.time()
+            s = self.stats
+            if self.stream != stream:             # play/stop: recomeça do zero
+                a_receber, ssrc, stream, parado_desde = False, None, self.stream, None
+            if self.stream is None:
+                continue
+            recente = s.ultima_chegada is not None and agora - s.ultima_chegada < 1.0
+            if recente and not a_receber:
+                log(f"A receber '{self.stream}'" + (f" (vídeo parado durante {agora - parado_desde:.1f} s)"
+                                                     if parado_desde else ""))
+            elif a_receber and not recente:
+                parado_desde = s.ultima_chegada
+                log(f"Sem vídeo de '{self.stream}' há 1 s")
+            if recente and ssrc is not None and s.ssrc != ssrc:
+                log(f"A stream passou a vir de outra fonte (SSRC {ssrc:08x} -> {s.ssrc:08x})")
+            if recente:
+                ssrc = s.ssrc
+            a_receber = recente
+            if self.mostrar_stats and agora - ultimo_stats >= 2:
+                ultimo_stats = agora
+                log(f"STATS stream={self.stream} {s.resumo()}")
 
 
 def consola(cliente):
@@ -117,11 +140,12 @@ if __name__ == "__main__":
     ap.add_argument("onode", help="IP do onode a que este cliente se liga")
     ap.add_argument("stream", help="stream a ver (ex.: filmeA)")
     ap.add_argument("--ip", default="0.0.0.0", help="(testes) IP local a usar")
-    ap.add_argument("--sem-gui", action="store_true", help="não abre janela (só estatísticas)")
+    ap.add_argument("--sem-gui", action="store_true", help="não abre janela")
+    ap.add_argument("--stats", action="store_true", help="escreve estatísticas (perdas, fps, jitter) de 2 em 2 s")
     args = ap.parse_args()
 
     log_mod.nome = socket.gethostname() if args.ip == "0.0.0.0" else f"cliente {args.ip}"
-    cliente = Cliente(args.onode, args.stream, args.ip)
+    cliente = Cliente(args.onode, args.stream, args.ip, args.stats)
     cliente.ver(args.stream)
     for svc in (cliente.svc_pedir, cliente.svc_receber, cliente.svc_estatisticas):
         threading.Thread(target=svc, daemon=True).start()

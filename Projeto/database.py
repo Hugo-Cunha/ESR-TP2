@@ -174,6 +174,32 @@ class Database:
                                   f"{self._destinos(f):16} {estado:8} {alternativas}")
             return "\n".join(linhas)
 
+    def tabela_arvore(self):
+        """Vista simples (comando 'arvore'): para cada filme, quem é o pai, quem são os
+        filhos e se o fluxo está ativo. É só o que este nó sabe: o resto da árvore
+        está nos outros nós."""
+        with self.lock:
+            linhas = [f"{'Filme':14} {'Estado':8} {'Pai':6} Filhos"]
+            for stream in sorted(self.streams_locais):
+                f = self.fluxos.get((self.meu_ip, stream))
+                ativo = f is not None and f.preciso()
+                linhas.append(f"{self.meu_nome + '/' + stream:14} {'ATIVO' if ativo else 'inativo':8} "
+                              f"{'(eu)':6} {self._filhos(f)}")
+            for rota in sorted(self.rotas.values(), key=lambda r: r.nome_servidor):
+                pai = self.nome_de(rota.origem) if rota.origem else "-"
+                for stream in rota.streams:
+                    f = self.fluxos.get((rota.servidor, stream))
+                    ativo = f is not None and f.preciso() and f.pedido_a is not None
+                    linhas.append(f"{rota.nome_servidor + '/' + stream:14} {'ATIVO' if ativo else 'inativo':8} "
+                                  f"{pai:6} {self._filhos(f)}")
+            return "\n".join(linhas)
+
+    def _filhos(self, f):
+        if f is None or not f.preciso():
+            return "-"
+        nomes = [self.nome_de(ip) for ip in sorted(f.destinos)] + [f"cliente {ip}" for ip in sorted(f.clientes)]
+        return ", ".join(nomes)
+
     def estado_json(self):
         """Estado local em JSON (comando 'estado'), para a ferramenta tools/arvore.py.
         Só tem o que o nó sabe: a sua Origem por servidor e os seus Destinos."""
