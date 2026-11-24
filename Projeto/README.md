@@ -14,7 +14,7 @@ Este diretório contém a implementação de um serviço *Over-the-Top* de entre
 | Árvores | Uma árvore de caminhos mais curtos por servidor, formada pelas Origens; os ramos são ativados pelos recetores (ATIVAR) e podados quando deixam de ter destinos (DESATIVAR), como no PIM-SM/DVMRP |
 | Métrica | Custo de ligação ponderado: **1×salto + 2×atraso + 3×perdas + 1×carga**, com o atraso medido pelo RTT local (secção 4) |
 | Comunicação | Só o previsto: numa ligação sem fluxo passam apenas o heartbeat (`ALIVE`) e o anúncio periódico, a cada 10 s; tudo o resto é desencadeado por eventos (secção 4.1) |
-| Streams | S1: filmeA, filmeB · S2: filmeB, filmeC. O filmeB está replicado: o onode de acesso escolhe o servidor de menor custo e muda automaticamente se este falhar |
+| Streams | S1: filmeA, filmeB, movie · S2: filmeB, filmeC. O `movie` é o `movie.Mjpeg` do livro, pedido no enunciado; os filmes A, B e C são gerados por `tools/gen_video.py` e mostram o nome e o nº da frame, para se ver no cliente que stream chega e se há saltos. O filmeB está replicado: o onode de acesso escolhe o servidor de menor custo e muda automaticamente se este falhar |
 | Vídeo | MJPEG em RTP (exemplo do livro de Kurose & Ross); o servidor só emite quando há destinos |
 
 ## 2. Organização do código

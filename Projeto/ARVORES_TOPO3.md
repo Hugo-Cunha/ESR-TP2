@@ -22,7 +22,7 @@ Clientes: PC5 → O2, PC3 → O3, PC8 → O4, PC6 → O5.
 
 ---
 
-## 1. Árvore do S1 (filmeA, filmeB)
+## 1. Árvore do S1 (filmeA, filmeB, movie)
 
 **Árvores possíveis:** cada linha diz os pais que cada nó pode ter. São os candidatos que aparecem na coluna "Alternativas" da tabela `rotas`. O split horizon exclui os vizinhos que recebem deste nó.
 
@@ -76,16 +76,16 @@ A única outra árvore com o mesmo custo pendura o O3 no O4 em vez do O2.
 
 As árvores acima são **potenciais**: o vídeo só desce pelos ramos que têm clientes (ATIVAR/poda). Cada cliente pede uma stream ao seu onode, e esse onode escolhe o servidor de menor custo que a tem.
 
-**a) Clientes da demo** (PC5 filmeA, PC3 filmeB, PC8 filmeC, PC6 filmeB):
+**a) Clientes da demo** (PC5 filmeA, PC3 filmeB, PC8 filmeA, PC6 filmeB):
 
 | Cliente | Onode | Stream | Servidor escolhido | Ramo ativo |
 |---|---|---|---|---|
 | PC5 | O2 | filmeA | S1 (o único que a tem) | S1 → O2 |
 | PC3 | O3 | filmeB | S1 (custo 1; o S2 custa 2) | S1 → O3 |
-| PC8 | O4 | filmeC | S2 (o único que a tem) | S2 → O4 |
+| PC8 | O4 | filmeA | S1 (o único que a tem) | S1 → O2 → O4 |
 | PC6 | O5 | filmeB | S2 (custo 1; o S1 custa 2) | S2 → O5 |
 
-Cada cliente fica a 1 salto do servidor. É a vantagem de ter o filmeB nos dois servidores: cada onode vai buscá-lo ao mais próximo.
+O filmeA do PC5 e do PC8 partilha o ramo S1 → O2: o O2 recebe uma cópia e replica-a para o PC5 e para o O4. O filmeB está nos dois servidores, por isso cada onode vai buscá-lo ao mais próximo (1 salto).
 
 **b) Os 4 clientes a ver o filmeA** (é o teste T2; só o S1 tem o filmeA):
 

@@ -24,6 +24,12 @@
         <service name="DefaultRoute"/>
       </services>
     </device>
+    <device id="6" name="Bootstrapper" icon="" canvas="1" type="PC" class="" image="" compose="" compose_name="">
+      <position x="461.0" y="150.0" lat="47.577" lon="-122.127" alt="2.0"/>
+      <services>
+        <service name="DefaultRoute"/>
+      </services>
+    </device>
   </devices>
   <links>
     <link node1="3" node2="1">
@@ -39,6 +45,11 @@
     <link node1="3" node2="5">
       <iface1 id="2" name="veth3.2.1"/>
       <iface2 id="0" name="eth0" ip4="10.0.0.22" ip4_mask="24" ip6="2001::16" ip6_mask="64"/>
+      <options delay="0" bandwidth="0" loss="0.0" dup="0" jitter="0" unidirectional="0" buffer="0"/>
+    </link>
+    <link node1="3" node2="6">
+      <iface1 id="3" name="veth3.3.1"/>
+      <iface2 id="0" name="eth0" ip4="10.0.0.23" ip4_mask="24" ip6="2001::17" ip6_mask="64"/>
       <options delay="0" bandwidth="0" loss="0.0" dup="0" jitter="0" unidirectional="0" buffer="0"/>
     </link>
   </links>

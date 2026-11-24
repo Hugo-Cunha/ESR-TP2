@@ -36,7 +36,7 @@ Overlay (`configs/overlay_topo1.json`): `S1 — O1`; o cliente liga-se ao O1.
 | PC | Papel | Comando |
 |---|---|---|
 | **Bootstrapper** (10.0.0.23) | bootstrapper | `python3 bootstrapper.py configs/overlay_topo1.json` |
-| **Server** (10.0.0.22) | S1 (filmeA, filmeB) | `python3 servidor.py 10.0.0.23 filmeA filmeB` |
+| **Server** (10.0.0.22) | S1 (filmeA, filmeB, movie) | `python3 servidor.py 10.0.0.23 filmeA filmeB movie` |
 | **PC1** (10.0.0.20) | O1 | `python3 onode.py 10.0.0.23` |
 | **PC2** (10.0.0.21) | cliente, ligado ao O1 | `python3 cliente.py 10.0.0.20 filmeA` |
 
@@ -72,7 +72,7 @@ Overlay (`configs/overlay_topo2.json`): `S1 — S2`; o cliente liga-se ao S2 (um
 | PC | Papel | Comando |
 |---|---|---|
 | **Bootstrapper** (10.0.6.20) | bootstrapper | `python3 bootstrapper.py configs/overlay_topo2.json` |
-| **Server1** (10.0.1.20) | S1 (filmeA, filmeB) | `python3 servidor.py 10.0.6.20 filmeA filmeB` |
+| **Server1** (10.0.1.20) | S1 (filmeA, filmeB, movie) | `python3 servidor.py 10.0.6.20 filmeA filmeB movie` |
 | **PC1** (10.0.0.20) | S2 (filmeB, filmeC) | `python3 servidor.py 10.0.6.20 filmeB filmeC` |
 | **PC2** (10.0.5.20) | cliente, ligado ao S2 | `python3 cliente.py 10.0.0.20 filmeA` |
 
@@ -112,7 +112,7 @@ Overlay (`configs/overlay_topo3.json`): S1 = Server, S2 = Server2, O1 = PC1, O2 
 | PC | Papel | Comando |
 |---|---|---|
 | **Bootstrapper** | bootstrapper | `python3 bootstrapper.py configs/overlay_topo3.json` |
-| **Server** (10.0.18.20) | S1 | `python3 servidor.py 10.0.18.10 filmeA filmeB` |
+| **Server** (10.0.18.20) | S1 | `python3 servidor.py 10.0.18.10 filmeA filmeB movie` |
 | **Server2** (10.0.0.22) | S2 | `python3 servidor.py 10.0.18.10 filmeB filmeC` |
 | **PC1** | O1 | `python3 onode.py 10.0.18.10` |
 | **PC4** | O2 | `python3 onode.py 10.0.18.10` |
@@ -130,6 +130,8 @@ Overlay (`configs/overlay_topo3.json`): S1 = Server, S2 = Server2, O1 = PC1, O2 
 | **PC6** | O5 (PC7) | `python3 cliente.py 10.0.0.21 filmeB` |
 
 Sem janela: acrescentar `--sem-gui`.
+
+O S1 também tem o `movie` (o `movie.Mjpeg` do livro, que o enunciado manda usar): em qualquer cliente, `play movie`.
 
 O PC8 vê o **filmeA**, que só existe no S1: chega ao O4 pelo O2 (S1 → O2 → O4), por isso há um relay a replicar e um relay para matar no passo 6. Com o filmeC o vídeo viria direto do S2.
 
@@ -193,7 +195,7 @@ Uma alteração de cada vez, no terminal do **PC4 (O2)**, com o PC8 a ver o film
 |---|---|---|
 | `Bootstrapper ... indisponível` | bootstrapper ainda não arrancou, IP errado ou rede sem routing | arrancar o bootstrapper; confirmar o IP (10.0.0.23 / 10.0.6.20 / 10.0.18.10) e testar `ping` para ele |
 | cliente: `o onode não responde` | o onode desse cliente não está a correr, ou IP errado | arrancar o onode; confirmar o IP na tabela acima |
-| cliente: `nenhum servidor tem esta stream` | rotas ainda a convergir ou nome da stream errado | esperar 2-3 s; streams: filmeA, filmeB, filmeC |
+| cliente: `nenhum servidor tem esta stream` | rotas ainda a convergir ou nome da stream errado | esperar 2-3 s; streams: filmeA, filmeB, filmeC, movie |
 | `Address already in use` | já há um programa a correr nesse PC | `pkill -f "onode.py\|servidor.py\|cliente.py"` |
 | `no display name` (cliente) | terminal sem acesso ao ecrã | `export DISPLAY=:0` ou usar `--sem-gui` |
 | `recusou o registo` | o IP do PC não está no `configs/overlay_topoN.json` do cenário | só onodes/servidores se registam; confirmar o PC |
