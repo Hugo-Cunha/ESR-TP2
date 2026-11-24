@@ -156,6 +156,13 @@ def cumprimentar(db, sock, fui_eu_a_ligar, recurso=False):
         if not fui_eu_a_ligar:
             recurso = bool(resposta.dados.get("recurso"))
             with db.lock:
+                if resposta.origem not in db.vizinhos and not recurso:
+                    # Só se aceitam os vizinhos dados pelo bootstrapper. A única exceção é
+                    # uma ligação de recurso (OLA com recurso=true), aberta por um nó em
+                    # perigo que obteve o nosso IP com ENDANGERED.
+                    log(f"OLA recusado de {resposta.origem} ({resposta.dados.get('nome', '?')}): não é meu vizinho")
+                    sock.close()
+                    return
                 sock.sendall(ola(db, recurso).serialize())
     except OSError:
         sock.close()
@@ -164,7 +171,7 @@ def cumprimentar(db, sock, fui_eu_a_ligar, recurso=False):
     ip = resposta.origem
     with db.lock:
         v = db.vizinhos.get(ip)
-        if v is None:                         # não veio do bootstrapper: é uma ligação de recurso
+        if v is None:                         # ligação de recurso pedida por outro nó
             v = db.vizinhos[ip] = Vizinho(ip, resposta.dados["nome"])
             v.recurso = recurso
         # Ligações duplicadas (os dois nós ligaram-se ao mesmo tempo, no arranque):
@@ -347,7 +354,9 @@ def handle_adeus(db, ip, msg):
 
 
 def sair(db):
-    """Saída ordeira: avisa os vizinhos para não terem de esperar pelo timeout."""
+    """Saída ordeira: avisa os vizinhos para não terem de esperar pelo timeout.
+    Primeiro pára os serviços (a_correr = False), para o nó não voltar a ligar-se
+    nem a pedir fluxos enquanto o ADEUS está a ser enviado."""
+    db.a_correr = False
     enviar_a_todos(db, Mensagem(Mensagem.ADEUS))
     time.sleep(0.3)
-    db.a_correr = False

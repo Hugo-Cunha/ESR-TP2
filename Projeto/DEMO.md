@@ -126,10 +126,12 @@ Overlay (`configs/overlay_topo3.json`): S1 = Server, S2 = Server2, O1 = PC1, O2 
 |---|---|---|
 | **PC5** | O2 (PC4) | `python3 cliente.py 10.0.17.20 filmeA` |
 | **PC3** | O3 (PC2) | `python3 cliente.py 10.0.19.21 filmeB` |
-| **PC8** | O4 (PC9) | `python3 cliente.py 10.0.20.20 filmeC` |
+| **PC8** | O4 (PC9) | `python3 cliente.py 10.0.20.20 filmeA` |
 | **PC6** | O5 (PC7) | `python3 cliente.py 10.0.0.21 filmeB` |
 
 Sem janela: acrescentar `--sem-gui`.
+
+O PC8 vê o **filmeA**, que só existe no S1: chega ao O4 pelo O2 (S1 → O2 → O4), por isso há um relay a replicar e um relay para matar no passo 6. Com o filmeC o vídeo viria direto do S2.
 
 ## C.2 Comandos (escrever no terminal do próprio nó)
 
@@ -169,6 +171,19 @@ Este terminal mostra, de 2 em 2 s (só lê o estado local de cada nó com `vcmd`
 | 14 | `stop` num cliente | `poda` nos terminais acima; em `rotas`, `inativa` | "Sem clientes não há tráfego." |
 | 15 | (opcional) Wireshark num relay, filtro `udp.port==6001` | 1 fluxo a entrar, N a sair | prova de que não há marosca |
 | 16 | Wireshark no PC1 (O1), filtro `ip.addr==10.0.18.21 && ip.addr==10.0.19.21` (ligação O1–O3, sem fluxo) | só `ALIVE`/`ALIVE_RESP` e `ANUNCIO`, a cada 10 s; nenhum pacote UDP 6001 | "Onde não há fluxo só passa o heartbeat previsto; tudo o resto é por eventos." |
+
+## C.4 Validação da métrica com `tc netem` (Tabela 6 do relatório)
+
+Uma alteração de cada vez, no terminal do **PC4 (O2)**, com o PC8 a ver o filmeA. Depois de cada passo, esperar ~15 s e ver `vizinhos` e `rotas` no **PC9 (O4)**. O `netem` só atua à **saída** do PC4, por isso 40 ms dão RTT ≈ 41 ms (custo 1 + 2×4 = 9); no passo 11 do guião, o atraso do CORE aplica-se nos dois sentidos (RTT 80 ms, custo 17).
+
+| Passo | Comando no PC4 | Esperado no PC9 |
+|---|---|---|
+| 0 | `tc qdisc show dev eth0` (não deve haver `netem`) | ligação ao O2 com custo 1 (2 com a carga do fluxo); `S1/filmeA` com Origem O2 (2) |
+| 1 | `tc qdisc replace dev eth0 root netem delay 40ms` | RTT ao O2 ≈ 41 ms, custo 9; Origem do O4 passa a O3 (2); alternativa O2(18) |
+| 2 | `tc qdisc replace dev eth0 root netem delay 80ms` | custo 17; alternativa O2(34) |
+| 3 | `tc qdisc del dev eth0 root` | volta ao passo 0 (Origem O2) |
+| 4 | `tc qdisc replace dev eth0 root netem loss 20%` | Perdas ≈ 20–30 %, custo ≈ 1 + 3×P; Origem passa a O3; com o *hold-down* (30 s) não volta logo ao O2 |
+| 5 | `tc qdisc del dev eth0 root` | Perdas 0 %; a Origem regressa ao O2 e fica |
 
 ---
 

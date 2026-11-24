@@ -72,7 +72,7 @@ class Cliente:
     def ver(self, stream):
         if self.stream != stream:
             self.stats = Estatisticas()
-        self.stream = stream
+        self.stream = self.ultima_stream = stream
         log(f"A pedir '{stream}' ao onode {self.onode}")
 
     ##############################################################################
@@ -135,7 +135,8 @@ if __name__ == "__main__":
             threading.Thread(target=consola, args=(cliente,), daemon=True).start()
             root = Tk()
             root.title(f"{log_mod.nome} - {args.stream} (onode {args.onode})")
-            gui = ClienteGUI(root, lambda: cliente.ver(args.stream), cliente.parar)
+            # o Play retoma a última stream pedida (que pode ter mudado com "play <stream>")
+            gui = ClienteGUI(root, lambda: cliente.ver(cliente.ultima_stream), cliente.parar)
 
             def copiar_frame():                 # passa a frame mais recente para a janela
                 gui.ultima_frame = cliente.ultima_frame

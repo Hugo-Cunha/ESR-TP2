@@ -37,7 +37,7 @@ Resposta do bootstrapper quando o IP não existe na configuração.
 ---
 
 ## OLA
-Primeira mensagem numa ligação TCP nova entre dois vizinhos (porta 6000). Quem tem o IP menor liga e envia primeiro; o outro responde com outro OLA.
+Primeira mensagem numa ligação TCP nova entre dois vizinhos (porta 6000). Quem tem o IP menor liga e envia primeiro; o outro responde com outro OLA. Um OLA de um IP que não está na lista de vizinhos dada pelo bootstrapper é recusado (a ligação fecha), a não ser que traga `"recurso": true` (ligação de recurso aberta por um nó em perigo, ver ENDANGERED).
 
 ```json
 {"tipo": "OLA", "origem": "10.0.17.20", "dados": {"nome": "O2", "recurso": false}}
@@ -157,6 +157,6 @@ O onode escolhe, entre os servidores que têm a stream, o de menor custo (se ele
 | `servidor`, `stream` | identificam o **fluxo**; um onode só aceita o pacote se vier da sua Origem para esse servidor e envia uma cópia a cada Destino |
 | `t_envio` | instante de emissão no servidor (pode servir para medir o atraso entre onodes; os relógios do CORE são os mesmos) |
 
-Este cabeçalho **só circula entre onodes**. Aos clientes, o onode envia **apenas o pacote RTP**: o cliente não fica a saber de que servidor vem o vídeo, nem por quantos saltos passou. As estatísticas do cliente usam só o RTP (perdas pelo nº de sequência, *jitter* pelo *timestamp*, trocas de fonte pelo SSRC).
+Este cabeçalho **só circula entre onodes**. Aos clientes, o onode envia **apenas o pacote RTP**: o cliente não fica a saber de que servidor vem o vídeo, nem por quantos saltos passou. As estatísticas do cliente usam só o RTP (perdas pelo nº de sequência, *jitter* pelo *timestamp*, trocas de fonte pelo SSRC). O SSRC é aleatório em cada arranque do servidor (RFC 3550, secção 5.1): se fosse fixo, depois de o servidor reiniciar o cliente deitaria fora os pacotes novos, porque o nº de sequência recomeça em 1.
 
 O **pacote RTP** (12 B de cabeçalho + 1 *frame* JPEG) está descrito campo a campo em `comum/RtpPacket.py`.

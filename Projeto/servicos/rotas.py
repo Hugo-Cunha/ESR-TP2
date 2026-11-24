@@ -120,7 +120,11 @@ def handle_anuncio(db, ip_vizinho, msg):
     rota.candidatos[ip_vizinho] = Candidato(custo, d["custo"], d["saltos"] + 1, d["seq"])
 
     escolher_origem(db, rota)
-    reenviar_anuncio(db, rota, d["seq"])
+    # Reenvia-se o seq da rota que estamos a USAR (a da Origem), como no DSDV/Babel.
+    # Se um seq novo chegou por outro vizinho e a Origem ainda não o mandou, não se
+    # anuncia "ronda nova" com o custo de um caminho da ronda antiga.
+    if rota.origem is not None:
+        reenviar_anuncio(db, rota, rota.candidatos[rota.origem].seq)
     fluxos.atualizar(db)
 
 

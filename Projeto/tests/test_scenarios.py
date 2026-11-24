@@ -52,13 +52,11 @@ def client(o, name, stream):
 
 
 def nome_servidor(o, fonte):
-    """O cliente só vê o SSRC do RTP (CRC32 de "IP do servidor/stream"). O teste
-    conhece a configuração e traduz o SSRC no nome do servidor."""
-    import zlib
-    for n, ip in o.ip.items():
-        for st in ("filmeA", "filmeB", "filmeC"):
-            if f"{zlib.crc32(f'{ip}/{st}'.encode()):08x}" == fonte:
-                return n
+    """O cliente só vê o SSRC do RTP (aleatório em cada arranque do servidor). Cada
+    servidor escreve no log o SSRC de cada stream; o teste procura-o lá."""
+    for n in o.ip:
+        if n.startswith("S") and f"(SSRC {fonte})" in o.log(n):
+            return n
     return fonte
 
 

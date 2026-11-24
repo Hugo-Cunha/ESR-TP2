@@ -5,7 +5,6 @@ import random
 import socket
 import threading
 import time
-import zlib
 
 from comum import config, pacote_dados
 from comum.log import log
@@ -49,9 +48,12 @@ def svc_emitir_stream(db, stream, ficheiro):
     sem clientes não há tráfego. É uma emissão "em direto": quem entra a meio
     começa a ver na frame atual."""
     video = VideoStream(ficheiro)
-    ssrc = zlib.crc32(f"{db.meu_ip}/{stream}".encode())   # identifica esta fonte
+    # SSRC aleatório em cada arranque (RFC 3550, secção 5.1). Se fosse fixo, depois de
+    # o servidor reiniciar o cliente via a mesma fonte com o nº de sequência a recomeçar
+    # em 1 e deitava fora os pacotes novos (pareciam atrasados) durante muito tempo.
+    ssrc = random.getrandbits(32)
     seq = 0
-    log(f"A emitir '{stream}' ({ficheiro}) a {config.FPS} fps")
+    log(f"A emitir '{stream}' ({ficheiro}) a {config.FPS} fps (SSRC {ssrc:08x})")
     while db.a_correr:
         frame = video.nextFrame()
         with db.lock:
